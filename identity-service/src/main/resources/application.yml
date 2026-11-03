@@ -12,13 +12,14 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
 
   # Cấu hình gửi OTP qua Gmail SMTP (SRS FR-AUTH-02)
+  # Để sử dụng: đặt biến môi trường GMAIL_USERNAME và GMAIL_APP_PASSWORD
   mail:
     host: smtp.gmail.com
     port: 587
@@ -32,6 +33,11 @@ spring:
             enable: true
 
 jwt:
-  secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-  expiration-ms: 86400000 # 24 giờ
+  secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+  expiration-ms: ${JWT_EXPIRATION_MS:86400000}         # 24 giờ
+  refresh-expiration-ms: ${JWT_REFRESH_MS:604800000}    # 7 ngày
 
+logging:
+  level:
+    com.glassstore.identity: INFO
+    org.springframework.security: WARN
