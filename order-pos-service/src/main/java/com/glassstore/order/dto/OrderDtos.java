@@ -129,8 +129,10 @@ public final class OrderDtos {
 
         private String actor;
 
+        @jakarta.validation.constraints.Size(max = 80)
         private String trackingCode;
 
+        @jakarta.validation.constraints.Size(max = 60)
         private String carrierName;
     }
 

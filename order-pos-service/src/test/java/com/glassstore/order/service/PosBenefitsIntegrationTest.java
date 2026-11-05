@@ -3,6 +3,7 @@ import com.glassstore.order.domain.*;
 import com.glassstore.order.entity.*;
 import com.glassstore.order.repository.*;
 import com.glassstore.order.client.CatalogInventoryClient;
+import com.glassstore.order.config.OrderDataInitializer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -29,11 +30,11 @@ class PosBenefitsIntegrationTest {
     @Autowired OrderRepository orderRepository;
     @Autowired jakarta.persistence.EntityManager entities;
     @MockBean PosDataService data;
+    @MockBean OrderDataInitializer demoSeed;
     @MockBean CatalogInventoryClient catalog;
     @MockBean StockOutboxWorker worker;
     @MockBean OrderCheckoutService teamCheckout;
     @MockBean LabDispatchService labDispatch;
-    @MockBean com.glassstore.order.config.OrderDataInitializer initializer;
     @MockBean WarrantyActivationService warrantyActivation;
     @BeforeEach void setup() throws Exception {
         when(data.actor(any(),anyBoolean())).thenReturn(new ObjectMapper().readTree("{\"id\":1,\"username\":\"qa\",\"roles\":[\"ROLE_ADMIN\"]}"));

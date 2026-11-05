@@ -37,12 +37,12 @@ public enum LabJobStatus {
      * CREATED -> QUEUED -> IN_PROGRESS -> QC_PASSED / QC_FAILED -> COMPLETED / CANCELLED.
      */
     private static final Map<LabJobStatus, Set<LabJobStatus>> ALLOWED = Map.ofEntries(
-            Map.entry(CREATED, EnumSet.of(QUEUED, CANCELLED)),
-            Map.entry(PENDING, EnumSet.of(QUEUED, CANCELLED)),
+            Map.entry(CREATED, EnumSet.of(QUEUED, RECEIVED, IN_PROGRESS, CANCELLED)),
+            Map.entry(PENDING, EnumSet.of(QUEUED, RECEIVED, IN_PROGRESS, CANCELLED)),
             Map.entry(QUEUED, EnumSet.of(IN_PROGRESS, CANCELLED)),
-            Map.entry(IN_PROGRESS, EnumSet.of(QC_PASSED, QC_FAILED, CANCELLED)),
-            Map.entry(QC_PASSED, EnumSet.of(COMPLETED, CANCELLED)),
-            Map.entry(QC_FAILED, EnumSet.of(COMPLETED, CANCELLED, QUEUED)),
+            Map.entry(IN_PROGRESS, EnumSet.of(QC_PENDING, QC_CHECK, QC_PASSED, QC_FAILED, CANCELLED)),
+            Map.entry(QC_PASSED, EnumSet.of(READY_FOR_DELIVERY, COMPLETED, CANCELLED)),
+            Map.entry(QC_FAILED, EnumSet.of(IN_PROGRESS, CANCELLED, QUEUED)),
             Map.entry(COMPLETED, EnumSet.noneOf(LabJobStatus.class)),
             Map.entry(CANCELLED, EnumSet.noneOf(LabJobStatus.class)),
             Map.entry(WAITING_PROCESS, EnumSet.of(QUEUED, RECEIVED, IN_PROGRESS, CANCELLED)),

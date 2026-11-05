@@ -96,36 +96,13 @@ public class LabJobServiceImpl implements LabJobService {
                             "Không tìm thấy toa kính với ID: " + requestedRxId));
         }
 
-        // Tự động tạo và lưu toa kính nếu chưa có nhưng request truyền các thông số khúc xạ
-        if (prescription == null && (request.getEffectiveOdSphere() != null || request.getEffectiveOsSphere() != null || request.getEffectivePd() != null)) {
-            prescription = Prescription.builder()
-                    .customerId(request.getCustomerId() != null ? request.getCustomerId() : 1L)
-                    .customerName(request.getCustomerName() != null ? request.getCustomerName() : "Khách hàng POS")
-                    .optometristId(1L)
-                    .optometristName("Hệ thống POS")
-                    .odSph(request.getEffectiveOdSphere() != null ? request.getEffectiveOdSphere() : BigDecimal.ZERO)
-                    .odCyl(request.getEffectiveOdCyl() != null ? request.getEffectiveOdCyl() : BigDecimal.ZERO)
-                    .odAxis(request.getEffectiveOdAxis() != null ? request.getEffectiveOdAxis() : 0)
-                    .odAdd(request.getEffectiveOdAdd() != null ? request.getEffectiveOdAdd() : BigDecimal.ZERO)
-                    .osSph(request.getEffectiveOsSphere() != null ? request.getEffectiveOsSphere() : BigDecimal.ZERO)
-                    .osCyl(request.getEffectiveOsCyl() != null ? request.getEffectiveOsCyl() : BigDecimal.ZERO)
-                    .osAxis(request.getEffectiveOsAxis() != null ? request.getEffectiveOsAxis() : 0)
-                    .osAdd(request.getEffectiveOsAdd() != null ? request.getEffectiveOsAdd() : BigDecimal.ZERO)
-                    .pd(request.getEffectivePd() != null ? request.getEffectivePd() : new BigDecimal("63.0"))
-                    .notes(request.getPrescription() != null ? request.getPrescription().getNotes() : null)
-                    .createdAt(LocalDateTime.now())
-                    .build();
-            prescription = prescriptionRepository.save(prescription);
-            prescriptionId = prescription.getId();
-        }
-
+        // Fabrication uses an existing clinical prescription, never invented measurements or staff IDs.
         if (prescription == null) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Thiếu thông tin toa kính cho lệnh gia công");
         }
 
         // Kiểm tra đúng khách hàng của đơn hàng
-        if (request.getCustomerId() != null && prescription.getCustomerId() != null
-                && !request.getCustomerId().equals(prescription.getCustomerId())) {
+        if (request.getCustomerId() != null && !request.getCustomerId().equals(prescription.getCustomerId())) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Toa kính không đúng khách hàng của đơn hàng");
         }
 

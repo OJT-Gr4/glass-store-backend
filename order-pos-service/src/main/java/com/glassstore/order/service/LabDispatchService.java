@@ -20,7 +20,9 @@ public class LabDispatchService {
 
     @Transactional
     public void enqueue(Order order) {
-        if (order.getPrescriptionId() == null || order.getOrderType() == null || !order.getOrderType().requiresPrescription()) return;
+        if (order.getOrderType() == null || !order.getOrderType().requiresPrescription()) return;
+        boolean hasItemPrescription = order.getItems() != null && order.getItems().stream().anyMatch(item -> item.getPrescriptionId() != null);
+        if (order.getPrescriptionId() == null && !hasItemPrescription) return;
         orders.lockById(order.getId()).orElseThrow();
         var entry = outbox.findByOrderId(order.getId()).orElseGet(() -> outbox.save(
                 LabDispatchOutbox.builder().orderId(order.getId()).build()));

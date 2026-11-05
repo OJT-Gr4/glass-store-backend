@@ -39,6 +39,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
 public class OrderController {
+    private final com.glassstore.order.service.OmsWorkflowService omsWorkflow;
 
     private final OrderService posOrderService;
     private final OrderCancellationService posCancellations;
@@ -54,6 +55,7 @@ public class OrderController {
     public ResponseEntity<List<Order>> getAllOrders(
             @RequestParam(name = "status", required = false) String status,
             @RequestParam(name = "channel", required = false) String channel) {
+        if (com.glassstore.common.security.CurrentActor.customer()) return ResponseEntity.ok(orderRepository.findByCustomerIdOrderByCreatedAtDesc(com.glassstore.common.security.CurrentActor.id()));
         if (status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status)) {
             OrderStatus st = null;
             try { st = OrderStatus.parse(status); } catch (Exception ignored) {}
@@ -78,6 +80,7 @@ public class OrderController {
 
     @GetMapping("/customer/{customerId}")
     public ResponseEntity<ApiResponse<List<Order>>> getByCustomer(@PathVariable("customerId") Long customerId) {
+        com.glassstore.common.security.CurrentActor.requireOwner(customerId);
         return ResponseEntity.ok(ApiResponse.success("OK",
                 orderRepository.findByCustomerIdOrderByCreatedAtDesc(customerId)));
     }
@@ -87,7 +90,7 @@ public class OrderController {
             @PathVariable("id") Long id,
             @RequestHeader(value = "X-Customer-Id", required = false) Long customerId) {
         Order order = requireOrder(id);
-        assertOwner(order, customerId);
+        com.glassstore.common.security.CurrentActor.requireOwner(order.getCustomerId());
         order.setInventorySyncStatus(stockDeductionService.statusForOrder(order.getId()));
         return ResponseEntity.ok(ApiResponse.success("OK", order));
     }
@@ -98,13 +101,14 @@ public class OrderController {
                 .orElseThrow(() -> com.glassstore.common.exception.ApiException.of(
                         com.glassstore.common.exception.ErrorCode.ORDER_NOT_FOUND,
                         "Không tìm thấy đơn hàng: " + orderCode));
+        com.glassstore.common.security.CurrentActor.requireOwner(order.getCustomerId());
         return ResponseEntity.ok(ApiResponse.success("OK", order));
     }
 
     /** Payment history for an order (FR-PAY-08). */
     @GetMapping("/{id}/payments")
     public ResponseEntity<ApiResponse<List<Payment>>> getPayments(@PathVariable("id") Long id) {
-        requireOrder(id);
+        com.glassstore.common.security.CurrentActor.requireOwner(requireOrder(id).getCustomerId());
         return ResponseEntity.ok(ApiResponse.success("OK",
                 paymentRepository.findByOrderIdOrderByCreatedAtDesc(id)));
     }
@@ -126,6 +130,11 @@ public class OrderController {
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody OrderDtos.CheckoutRequest request,
             @RequestHeader(value = "Authorization", required = false) String token) {
+        if (com.glassstore.common.security.CurrentActor.customer()) {
+            if (!"ONLINE".equalsIgnoreCase(request.getChannel())) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+            request.setCustomerId(com.glassstore.common.security.CurrentActor.id());
+        }
+        omsWorkflow.requireCustomerPrescriptions(request);
 
         prepareCounterSale(request);
         SalesChannel channel = SalesChannel.parse(request.getChannel());
@@ -140,6 +149,7 @@ public class OrderController {
 
         OrderCheckoutService.CheckoutOutcome outcome = checkoutService.checkout(request, key);
         Order order = outcome.order();
+        com.glassstore.common.security.CurrentActor.requireOwner(order.getCustomerId());
 
         // F10 at the counter confirms cash, card, or an in-store QR transfer.
         if (channel == SalesChannel.POS
@@ -147,8 +157,7 @@ public class OrderController {
                 && (order.getPaymentMethod() == PaymentMethod.CASH
                 || order.getPaymentMethod() == PaymentMethod.CARD
                 || order.getPaymentMethod() == PaymentMethod.VIETQR)) {
-            String actor = request.getStaffName() == null || request.getStaffName().isBlank()
-                    ? "POS" : request.getStaffName();
+            String actor = com.glassstore.common.security.CurrentActor.name();
             if (order.getPaymentMethod() == PaymentMethod.CASH) {
                 order = checkoutService.settleCash(order.getId(), actor);
             } else {
@@ -177,7 +186,7 @@ public class OrderController {
             @PathVariable("id") Long id,
             @RequestParam(name = "actor", required = false) String actor) {
         return ResponseEntity.ok(ApiResponse.success("Xác nhận thanh toán tiền mặt thành công",
-                checkoutService.settleCash(id, actor)));
+                checkoutService.settleCash(id, com.glassstore.common.security.CurrentActor.name())));
     }
 
     /** Validated status change (SRS §4.6). */
@@ -186,43 +195,7 @@ public class OrderController {
             @PathVariable("id") Long id,
             @Valid @RequestBody OrderDtos.StatusUpdateRequest body) {
 
-        Order order = requireOrder(id);
-        OrderStatus target;
-        try {
-            target = OrderStatus.parse(body.getStatus());
-        } catch (IllegalArgumentException ex) {
-            throw com.glassstore.common.exception.ApiException.of(
-                    com.glassstore.common.exception.ErrorCode.VALIDATION_ERROR, ex.getMessage());
-        }
-        if (order.getChannel() == SalesChannel.POS && "POS".equalsIgnoreCase(body.getActor()) && (target == OrderStatus.CANCELLED
-                || target == OrderStatus.CANCEL_PENDING || target == OrderStatus.REFUND_PENDING
-                || target == OrderStatus.REFUNDED || target == OrderStatus.CANCEL_REQUESTED)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Hãy dùng API hủy đơn tại quầy để hoàn kho và quyền lợi.");
-        }
-        if (body.getTrackingCode() != null && !body.getTrackingCode().isBlank()) {
-            order.setTrackingCode(body.getTrackingCode().trim());
-        }
-        if (body.getCarrierName() != null && !body.getCarrierName().isBlank()) {
-            order.setCarrierName(body.getCarrierName().trim());
-        }
-        if (target == OrderStatus.COMPLETED) {
-            order.setCompletedAt(java.time.LocalDateTime.now());
-            List<Payment> orderPayments = paymentRepository.findByOrderId(order.getId());
-            for (Payment p : orderPayments) {
-                if (p.getStatus() == com.glassstore.order.domain.PaymentStatus.PENDING) {
-                    p.setStatus(com.glassstore.order.domain.PaymentStatus.SUCCESS);
-                    p.setPaidAt(java.time.LocalDateTime.now());
-                    paymentRepository.save(p);
-                }
-            }
-        }
-        if (target == OrderStatus.CANCELLED) {
-            order.setCancelReason(body.getReason() != null ? body.getReason().trim() : "Hủy từ quản lý chuỗi OMS");
-            order.setCancelledBy(body.getActor() != null ? body.getActor().trim() : "OMS");
-            order.setCancelledAt(java.time.LocalDateTime.now());
-        }
-        Order updated = orderStatusService.transition(order, target, body.getActor(), body.getReason());
-        return ResponseEntity.ok(ApiResponse.success("Cập nhật trạng thái đơn hàng thành công", updated));
+        return ResponseEntity.ok(ApiResponse.success("OK", omsWorkflow.transition(id, body, com.glassstore.common.security.CurrentActor.name())));
     }
 
 
@@ -251,6 +224,10 @@ public class OrderController {
     public ResponseEntity<ApiResponse<Order>> dispatchLabJob(@PathVariable("id") Long id) {
         Order order = requireOrder(id);
         Order updated = checkoutService.dispatchLabJob(order);
+        if (updated.currentStatus() == OrderStatus.LAB_DISPATCH_FAILED) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ApiResponse.<Order>builder()
+                    .code(503).message("Chưa gửi được lệnh sang Lab. Vui lòng thử lại.").data(updated).build());
+        }
         return ResponseEntity.ok(ApiResponse.success("Gửi lệnh mài kính sang Lab thành công", updated));
     }
 

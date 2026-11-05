@@ -25,9 +25,13 @@ public class WarrantyController {
     private final WarrantyRepository warrantyRepository;
     private final WarrantyService warrantyService;
 
+    private List<Warranty> visible(List<Warranty> rows) {
+        return com.glassstore.common.security.CurrentActor.customer() ? rows.stream().filter(w -> java.util.Objects.equals(w.getCustomerId(),com.glassstore.common.security.CurrentActor.id())).toList() : rows;
+    }
+
     @GetMapping
     public ResponseEntity<List<Warranty>> getAllWarranties() {
-        return ResponseEntity.ok(warrantyRepository.findAllByOrderByCreatedAtDesc());
+        return ResponseEntity.ok(visible(warrantyRepository.findAllByOrderByCreatedAtDesc()));
     }
 
     @GetMapping("/search")
@@ -35,6 +39,7 @@ public class WarrantyController {
             @RequestParam(name = "phone", required = false) String phone,
             @RequestParam(name = "barcode", required = false) String barcode,
             @RequestParam(name = "q", required = false) String q) {
+        if (com.glassstore.common.security.CurrentActor.customer() && ((phone != null && !phone.isBlank()) || (barcode != null && !barcode.isBlank()))) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN);
         if (phone != null && !phone.isBlank()) {
             return ResponseEntity.ok(warrantyService.lookupByPhone(phone));
         }
@@ -42,7 +47,7 @@ public class WarrantyController {
             return ResponseEntity.ok(warrantyService.lookupByBarcode(barcode));
         }
         if (q != null && !q.trim().isEmpty()) {
-            return ResponseEntity.ok(warrantyRepository.search(q.trim()));
+            return ResponseEntity.ok(visible(warrantyRepository.search(q.trim())));
         }
         return ResponseEntity.ok(warrantyRepository.findAllByOrderByCreatedAtDesc());
     }
@@ -50,19 +55,20 @@ public class WarrantyController {
     @GetMapping("/{id}")
     public ResponseEntity<Warranty> getWarrantyById(@PathVariable("id") Long id) {
         return warrantyRepository.findById(id)
-                .map(ResponseEntity::ok)
+                .map(w -> { com.glassstore.common.security.CurrentActor.requireOwner(w.getCustomerId()); return ResponseEntity.ok(w); })
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/code/{code}")
     public ResponseEntity<Warranty> getWarrantyByCode(@PathVariable("code") String code) {
         return warrantyRepository.findByWarrantyCode(code)
-                .map(ResponseEntity::ok)
+                .map(w -> { com.glassstore.common.security.CurrentActor.requireOwner(w.getCustomerId()); return ResponseEntity.ok(w); })
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
     public ResponseEntity<Warranty> createWarranty(@RequestBody Warranty warranty) {
+        warranty.setId(null);
         if (warranty.getWarrantyCode() == null || warranty.getWarrantyCode().isEmpty()) {
             warranty.setWarrantyCode("#WAR-" + (System.currentTimeMillis() % 10000));
         }

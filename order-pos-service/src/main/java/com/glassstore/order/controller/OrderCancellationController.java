@@ -44,7 +44,8 @@ public class OrderCancellationController {
             @RequestBody(required = false) OrderDtos.CancelRequest body) {
 
         Order order = requireOrder(id);
-        if (stockOutboxes.findByOrderId(id).isPresent()) {
+        com.glassstore.common.security.CurrentActor.requireOwner(order.getCustomerId());
+        if (order.getChannel() == com.glassstore.order.domain.SalesChannel.POS || stockOutboxes.findByOrderId(id).isPresent()) {
             throw ApiException.of(ErrorCode.ORDER_NOT_CANCELLABLE, "Đơn POS cần hủy qua luồng hoàn kho tại quầy");
         }
         OrderStatus current = order.currentStatus();
@@ -54,7 +55,7 @@ public class OrderCancellationController {
                 ? "Khách hàng yêu cầu hủy" : body.getReason();
 
         Order updated = orderStatusService.transition(order, OrderStatus.CANCEL_REQUESTED,
-                "CUSTOMER", reason);
+                com.glassstore.common.security.CurrentActor.name(), reason);
         return ResponseEntity.ok(ApiResponse.success("Đã ghi nhận yêu cầu hủy đơn", updated));
     }
 
@@ -67,7 +68,7 @@ public class OrderCancellationController {
             @RequestHeader(value = "Authorization", required = false) String token) {
 
         Order order = requireOrder(id);
-        if (stockOutboxes.findByOrderId(id).isPresent()) {
+        if (order.getChannel() == com.glassstore.order.domain.SalesChannel.POS || stockOutboxes.findByOrderId(id).isPresent()) {
             String reason = body == null ? null : body.getReason();
             return ResponseEntity.ok(ApiResponse.success("Hủy đơn tại quầy",
                     posCancellations.cancel(id, new com.glassstore.order.service.OrderCancellationService.Request(reason, false), token)));
@@ -82,7 +83,7 @@ public class OrderCancellationController {
         OrderStatus target = paid ? OrderStatus.REFUND_PENDING : OrderStatus.CANCELLED;
 
         Order updated = orderStatusService.transition(order, target,
-                actor == null ? "STAFF" : actor, reason);
+                com.glassstore.common.security.CurrentActor.name(), reason);
 
         if (paid) {
             paymentRepository.findFirstByOrderIdAndStatus(id, PaymentStatus.SUCCESS).ifPresent(payment -> {

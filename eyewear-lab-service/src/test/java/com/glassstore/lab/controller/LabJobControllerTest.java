@@ -5,7 +5,7 @@ import com.glassstore.lab.dto.CreateLabJobRequest;
 import com.glassstore.lab.dto.LabJobResponse;
 import com.glassstore.lab.dto.UpdateJobStatusRequest;
 import com.glassstore.lab.entity.LabJobStatus;
-import com.glassstore.lab.repository.LabJobStatusHistoryRepository;
+import com.glassstore.lab.repository.LabJobHistoryRepository;
 import com.glassstore.lab.exception.GlobalExceptionHandler;
 import com.glassstore.lab.service.LabJobService;
 import org.junit.jupiter.api.DisplayName;
@@ -28,11 +28,30 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(LabJobController.class)
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class,com.glassstore.lab.config.LabSecurityConfig.class})
+@org.springframework.security.test.context.support.WithMockUser(username="1", roles="ADMIN")
 class LabJobControllerTest {
+
+    @Test
+    @org.springframework.security.test.context.support.WithMockUser(username="service", roles="SERVICE")
+    void orderQcLookupReturnsUnfinishedItemUntilEveryJobPasses() throws Exception {
+        var passed = com.glassstore.lab.entity.LabJob.builder().id(1L).orderId(101L).status(LabJobStatus.QC_PASSED).build();
+        var unfinished = com.glassstore.lab.entity.LabJob.builder().id(2L).orderId(101L).status(LabJobStatus.IN_PROGRESS).build();
+        when(jobs.findAllByOrderIdOrderByIdAsc(101L)).thenReturn(List.of(passed, unfinished));
+        when(labJobService.getLabJobById(2L)).thenReturn(LabJobResponse.builder()
+                .id(2L).orderId(101L).status(LabJobStatus.IN_PROGRESS).build());
+        mockMvc.perform(get("/api/lab-jobs/by-order/101"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
+        unfinished.setStatus(LabJobStatus.COMPLETED);
+        when(labJobService.getLabJobById(1L)).thenReturn(LabJobResponse.builder()
+                .id(1L).orderId(101L).status(LabJobStatus.QC_PASSED).build());
+        mockMvc.perform(get("/api/lab-jobs/by-order/101"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("QC_PASSED"));
+    }
 
     @Autowired
     private MockMvc mockMvc;
+    @MockBean private com.glassstore.lab.repository.LabJobRepository jobs;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -41,7 +60,7 @@ class LabJobControllerTest {
     private LabJobService labJobService;
 
     @MockBean
-    private LabJobStatusHistoryRepository historyRepository;
+    private LabJobHistoryRepository historyRepository;
 
     @Test
     @DisplayName("GET /api/lab-jobs: Trả về 200 OK và danh sách LabJobResponse")

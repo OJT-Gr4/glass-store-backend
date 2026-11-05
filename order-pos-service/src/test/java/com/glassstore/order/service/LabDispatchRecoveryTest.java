@@ -62,7 +62,9 @@ class LabDispatchRecoveryTest {
         dispatch.enqueue(saved); dispatch.retryPending();
         assertEquals(1,outbox.count()); assertEquals(1,orderRepository.count()); assertEquals(1,payments.count());
         verify(lab,times(2)).createFromOrder(argThat(payload -> saved.getId().equals(payload.get("orderId"))
-            && Long.valueOf(7).equals(payload.get("prescriptionId")) && "LNS-QA".equals(payload.get("lensSku"))));
+            && Long.valueOf(7).equals(payload.get("prescriptionId")) && "LNS-QA".equals(payload.get("lensSku"))
+            && Long.valueOf(10).equals(payload.get("customerId")) && payload.get("orderItemId") != null
+            && ("LAB_REQ_" + saved.getId() + "_" + payload.get("orderItemId")).equals(payload.get("idempotencyKey"))));
     }
     @Test void rolledBackSaleDoesNotCreateALabJob() throws Exception {
         var payload=request();

@@ -66,7 +66,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/auth/me", "/api/v1/auth/me").authenticated()
                 .requestMatchers("/api/auth/**", "/api/v1/auth/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/users/staff", "/api/v1/users/staff").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/users/staff", "/api/v1/users/staff").hasRole("ADMIN")
                 .requestMatchers("/h2-console/**").permitAll()
                 .anyRequest().authenticated()
             )

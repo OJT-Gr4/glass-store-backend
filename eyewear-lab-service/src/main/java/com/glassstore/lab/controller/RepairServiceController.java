@@ -36,6 +36,10 @@ public class RepairServiceController {
     @PostMapping
     public ResponseEntity<RepairServiceResponse> createRepairService(
             @Valid @RequestBody RepairServiceCreateRequest request) {
+        request = new RepairServiceCreateRequest(request.customerName(),request.customerPhone(),request.productName(),
+            request.productType(),request.productBarcode(),request.frameCondition(),request.lensCondition(),request.reportedProblem(),
+            request.physicalCondition(),request.requestedServices(),request.assignedTechnician(),
+            com.glassstore.common.security.CurrentActor.name(),request.expectedPickupAt(),request.notes(),request.customerNotes());
         return ResponseEntity.status(HttpStatus.CREATED).body(repairServiceWorkflow.create(request));
     }
 
@@ -43,6 +47,7 @@ public class RepairServiceController {
     public ResponseEntity<RepairServiceResponse> updateStatus(
             @PathVariable("id") Long id,
             @Valid @RequestBody RepairServiceStatusRequest request) {
+        request = new RepairServiceStatusRequest(request.status(),com.glassstore.common.security.CurrentActor.name(),request.notes());
         return ResponseEntity.ok(repairServiceWorkflow.updateStatus(id, request));
     }
 }

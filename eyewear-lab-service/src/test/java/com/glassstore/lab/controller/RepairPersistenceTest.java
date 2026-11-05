@@ -18,6 +18,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("test") @Transactional
+@org.springframework.security.test.context.support.WithMockUser(username="1", roles="ADMIN")
 class RepairPersistenceTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;

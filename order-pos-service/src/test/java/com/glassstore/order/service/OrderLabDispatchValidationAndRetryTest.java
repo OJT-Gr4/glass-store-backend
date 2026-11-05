@@ -249,6 +249,17 @@ class OrderLabDispatchValidationAndRetryTest {
     class RetryAndBackoffTests {
 
         @Test
+        void failedDispatchCanBeRetriedWithTheSameItemKey() {
+            paidOrder.setStatus(OrderStatus.LAB_DISPATCH_FAILED);
+            when(labServiceClient.getPrescriptionById(88L))
+                    .thenReturn(ResponseEntity.ok(Map.of("data", completeRxData)));
+            checkoutService.dispatchLabJob(paidOrder);
+            verify(labServiceClient).createLabJob(argThat(request ->
+                    "LAB_REQ_100_11".equals(request.getIdempotencyKey())));
+            verify(orderStatusService).transition(eq(paidOrder), eq(OrderStatus.PAID), eq("SYSTEM"), anyString());
+        }
+
+        @Test
         @DisplayName("Gặp lỗi mạng/timeout: retry tối đa 3 lần, nếu thất bại cả 3 lần thì cập nhật trạng thái đơn là LAB_DISPATCH_FAILED")
         void dispatchLabJob_RetryThreeTimes_UpdatesToLabDispatchFailed() {
             when(labServiceClient.getPrescriptionById(88L))

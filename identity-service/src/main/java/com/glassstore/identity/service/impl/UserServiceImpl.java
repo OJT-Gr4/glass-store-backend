@@ -54,6 +54,8 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserDTO createStaff(CreateStaffRequest request) {
+        if (request.getRoleName() != null && !request.getRoleName().isBlank() && !java.util.Set.of("ROLE_ADMIN","ROLE_SALES_STAFF","ROLE_OPTOMETRIST","ROLE_LAB_TECH").contains(request.getRoleName()))
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,"Unsupported staff role");
         if (request.getEmail() != null && userRepository.findByEmail(request.getEmail().trim().toLowerCase()).isPresent()) {
             throw new EmailAlreadyExistsException("Email '" + request.getEmail().trim() + "' đã được đăng ký trong hệ thống!");
         }

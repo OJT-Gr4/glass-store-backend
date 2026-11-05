@@ -12,6 +12,7 @@ import java.util.Optional;
 public interface LabJobRepository extends JpaRepository<LabJob, Long> {
     Optional<LabJob> findByIdempotencyKey(String idempotencyKey);
     Optional<LabJob> findByOrderId(Long orderId);
+    List<LabJob> findAllByOrderIdOrderByIdAsc(Long orderId);
     List<LabJob> findByStatusOrderByCreatedAtDesc(LabJobStatus status);
     List<LabJob> findAllByOrderByCreatedAtDesc();
 }

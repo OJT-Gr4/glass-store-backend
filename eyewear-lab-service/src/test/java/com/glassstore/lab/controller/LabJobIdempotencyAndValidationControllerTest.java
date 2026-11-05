@@ -31,7 +31,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Kiểm thử Controller API POST /api/lab-jobs về Idempotency và HTTP Status Code.
  */
 @WebMvcTest(LabJobController.class)
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class,com.glassstore.lab.config.LabSecurityConfig.class})
+@org.springframework.security.test.context.support.WithMockUser(username="1", roles="ADMIN")
 class LabJobIdempotencyAndValidationControllerTest {
 
     @Autowired

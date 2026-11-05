@@ -90,7 +90,7 @@ public class InventoryController {
     /** Manual stock correction. Requires a reason (BR-12). */
     @PostMapping("/api/variants/adjust")
     public ResponseEntity<ApiResponse<Void>> adjust(@Valid @RequestBody StockDtos.AdjustRequest request) {
-        stockService.adjust(request.getSku(), request.getDelta(), request.getActor(), request.getReason());
+        stockService.adjust(request.getSku(), request.getDelta(), com.glassstore.common.security.CurrentActor.name(), request.getReason());
         return ResponseEntity.ok(ApiResponse.success("Điều chỉnh tồn kho thành công", null));
     }
 

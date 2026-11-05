@@ -42,10 +42,20 @@ class OrderLabDispatchControllerTest {
         OrderCancellationService cancellations = mock(OrderCancellationService.class);
         StockDeductionService stockDeductionService = mock(StockDeductionService.class);
 
-        controller = new OrderController(
+        controller = new OrderController(mock(com.glassstore.order.service.OmsWorkflowService.class),
                 posService, cancellations, stockDeductionService,
                 orderRepository, paymentRepository, historyRepository,
                 checkoutService, orderStatusService);
+    }
+
+    @Test
+    void unavailableLabDoesNotReturnASuccessResponse() {
+        var failed = Order.builder().id(100L).status(OrderStatus.LAB_DISPATCH_FAILED).build();
+        when(orderRepository.findById(100L)).thenReturn(Optional.of(failed));
+        when(checkoutService.dispatchLabJob(failed)).thenReturn(failed);
+        var response = controller.dispatchLabJob(100L);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody().getData().getStatus()).isEqualTo(OrderStatus.LAB_DISPATCH_FAILED);
     }
 
     @Test

@@ -19,15 +19,22 @@ import java.util.List;
 public class PaymentController {
 
     private final PaymentService paymentService;
+    private final com.glassstore.order.repository.OrderRepository orders;
+    private void requireOwner(Long id) {
+        var order=orders.findById(id).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        com.glassstore.common.security.CurrentActor.requireOwner(order.getCustomerId());
+    }
 
     @GetMapping("/order/{orderId}")
     public ResponseEntity<ApiResponse<List<Payment>>> history(@PathVariable("orderId") Long orderId) {
+        requireOwner(orderId);
         return ResponseEntity.ok(ApiResponse.success("OK", paymentService.history(orderId)));
     }
 
     @PostMapping("/order/{orderId}/initiate")
     public ResponseEntity<ApiResponse<PaymentGateway.InitiationResult>> initiate(
             @PathVariable("orderId") Long orderId) {
+        requireOwner(orderId);
         return ResponseEntity.ok(ApiResponse.success("Đã khởi tạo thanh toán", paymentService.initiate(orderId)));
     }
 
@@ -46,6 +53,8 @@ public class PaymentController {
             @PathVariable("orderId") Long orderId,
             @RequestParam(name = "actor", required = false) String actor,
             @RequestBody(required = false) OrderDtos.CancelRequest body) {
+        requireOwner(orderId);
+        actor=com.glassstore.common.security.CurrentActor.name();
         String reason = body == null ? null : body.getReason();
         return ResponseEntity.ok(ApiResponse.success("Đã ghi nhận yêu cầu hoàn tiền",
                 paymentService.requestRefund(orderId, actor, reason)));

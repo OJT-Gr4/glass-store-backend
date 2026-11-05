@@ -24,18 +24,29 @@ public class EyeExamAppointmentController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<EyeExamAppointment>>> getAllAppointments() {
         List<EyeExamAppointment> list = appointmentRepository.findAllByOrderByPriorityLevelAscCreatedAtAsc();
+        if (com.glassstore.common.security.CurrentActor.customer()) list=list.stream()
+            .filter(a -> java.util.Objects.equals(a.getCustomerId(),com.glassstore.common.security.CurrentActor.id())).toList();
         return ResponseEntity.ok(ApiResponse.success("Lấy danh sách hàng đợi đo mắt thành công", list));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<EyeExamAppointment>> getAppointmentById(@PathVariable("id") Long id) {
         return appointmentRepository.findById(id)
-                .map(a -> ResponseEntity.ok(ApiResponse.success("Lấy chi tiết lịch hẹn thành công", a)))
+                .map(a -> {
+                    com.glassstore.common.security.CurrentActor.requireOwner(a.getCustomerId());
+                    return ResponseEntity.ok(ApiResponse.success("Lấy chi tiết lịch hẹn thành công", a));
+                })
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
     public ResponseEntity<ApiResponse<EyeExamAppointment>> createAppointment(@RequestBody EyeExamAppointment appointment) {
+        appointment.setId(null);
+        if (com.glassstore.common.security.CurrentActor.customer()) {
+            appointment.setCustomerId(com.glassstore.common.security.CurrentActor.id());
+            appointment.setStatus("WAITING"); appointment.setStatusLabel("Đang chờ");
+            appointment.setPriorityLevel(2); appointment.setWaitMinutes(0);
+        }
         if (appointment.getTicketCode() == null || appointment.getTicketCode().isEmpty()) {
             appointment.setTicketCode("EP-" + (1000 + (int)(Math.random() * 9000)));
         }

@@ -20,11 +20,13 @@ public class CartController {
 
     private final CartService cartService;
     private final OrderCheckoutService checkoutService;
+    private final com.glassstore.order.service.OmsWorkflowService omsWorkflow;
 
     @GetMapping
     public ResponseEntity<ApiResponse<CartDtos.CartView>> getCart(
             @RequestHeader(value = "X-Customer-Id", required = false) Long customerId,
             @RequestHeader(value = "X-Cart-Session", required = false) String sessionToken) {
+        customerId = com.glassstore.common.security.CurrentActor.id();
         return ResponseEntity.ok(ApiResponse.success("OK", cartService.getOrCreate(customerId, sessionToken)));
     }
 
@@ -33,6 +35,7 @@ public class CartController {
             @RequestHeader(value = "X-Customer-Id", required = false) Long customerId,
             @RequestHeader(value = "X-Cart-Session", required = false) String sessionToken,
             @Valid @RequestBody CartDtos.AddItemRequest request) {
+        customerId = com.glassstore.common.security.CurrentActor.id();
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Đã thêm vào giỏ hàng",
                         cartService.addItem(customerId, sessionToken, request)));
@@ -44,6 +47,7 @@ public class CartController {
             @RequestHeader(value = "X-Cart-Session", required = false) String sessionToken,
             @PathVariable("itemId") Long itemId,
             @Valid @RequestBody CartDtos.UpdateQtyRequest request) {
+        customerId = com.glassstore.common.security.CurrentActor.id();
         return ResponseEntity.ok(ApiResponse.success("Đã cập nhật số lượng",
                 cartService.updateQuantity(customerId, sessionToken, itemId, request.getQuantity())));
     }
@@ -53,6 +57,7 @@ public class CartController {
             @RequestHeader(value = "X-Customer-Id", required = false) Long customerId,
             @RequestHeader(value = "X-Cart-Session", required = false) String sessionToken,
             @PathVariable("itemId") Long itemId) {
+        customerId = com.glassstore.common.security.CurrentActor.id();
         return ResponseEntity.ok(ApiResponse.success("Đã xóa sản phẩm khỏi giỏ",
                 cartService.removeItem(customerId, sessionToken, itemId)));
     }
@@ -63,13 +68,18 @@ public class CartController {
             @RequestHeader(value = "X-Customer-Id", required = false) Long customerId,
             @RequestHeader(value = "X-Cart-Session", required = false) String sessionToken,
             @Valid @RequestBody OrderDtos.CheckoutRequest request) {
+        customerId = com.glassstore.common.security.CurrentActor.id();
 
+        request.setChannel("ONLINE");
+        request.setCustomerId(customerId);
         Cart cart = cartService.requireCart(customerId, sessionToken);
         request.setItems(cartService.toCheckoutLines(cart));
+        omsWorkflow.requireCustomerPrescriptions(request);
         if (customerId != null) {
             request.setCustomerId(customerId);
         }
         OrderCheckoutService.CheckoutOutcome outcome = checkoutService.checkout(request, idempotencyKey);
+        com.glassstore.common.security.CurrentActor.requireOwner(outcome.order().getCustomerId());
         if (!outcome.replayed()) {
             cartService.clear(cart);
         }

@@ -3,6 +3,7 @@ package com.glassstore.order.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.glassstore.order.client.CatalogClient;
 import com.glassstore.order.client.CatalogContracts;
+import com.glassstore.order.config.OrderDataInitializer;
 import com.glassstore.order.domain.*;
 import com.glassstore.order.entity.Order;
 import com.glassstore.order.repository.OrderRepository;
@@ -33,6 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @AutoConfigureMockMvc
 @Transactional
+@org.springframework.security.test.context.support.WithMockUser(username="1", roles="ADMIN")
 class OnlinePrescriptionCheckoutTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
@@ -40,6 +42,7 @@ class OnlinePrescriptionCheckoutTest {
     @Autowired PaymentRepository payments;
     @Autowired EntityManager entities;
     @MockBean CatalogClient catalog;
+    @MockBean OrderDataInitializer demoSeed;
 
     @BeforeEach void catalogFixture() {
         when(catalog.getBySku(anyString())).thenAnswer(invocation -> {
@@ -123,6 +126,6 @@ class OnlinePrescriptionCheckoutTest {
                 .content("{\"status\":\"COMPLETED\"}"))
             .andExpect(status().is4xxClientError());
         mvc.perform(get("/api/orders/"+order.getId()+"/history"))
-            .andExpect(jsonPath("$.data[0].actor").value("QA"));
+            .andExpect(jsonPath("$.data[0].actor").value("1"));
     }
 }

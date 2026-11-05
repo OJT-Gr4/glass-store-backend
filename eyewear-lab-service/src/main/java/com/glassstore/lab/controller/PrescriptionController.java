@@ -31,23 +31,23 @@ public class PrescriptionController {
     public ResponseEntity<ApiResponse<Prescription>> getPrescriptionById(@PathVariable("id") Long id) {
         Prescription p = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy toa kính với ID: " + id));
+        com.glassstore.common.security.CurrentActor.requireOwner(p.getCustomerId());
         return ResponseEntity.ok(ApiResponse.success("Lấy chi tiết toa kính thành công", p));
     }
 
     @GetMapping("/customer/{customerId}")
     public ResponseEntity<ApiResponse<List<Prescription>>> getByCustomer(@PathVariable("customerId") Long customerId) {
+        com.glassstore.common.security.CurrentActor.requireOwner(customerId);
         List<Prescription> list = prescriptionRepository.findByCustomerIdOrderByCreatedAtDescIdDesc(customerId);
         return ResponseEntity.ok(ApiResponse.success("Lấy lịch sử khúc xạ của khách hàng thành công", list));
     }
 
     @PostMapping
     public ResponseEntity<ApiResponse<Prescription>> createPrescription(@RequestBody Prescription prescription) {
-        if (prescription.getCustomerId() == null) {
-            prescription.setCustomerId(1L);
-        }
-        if (prescription.getOptometristId() == null) {
-            prescription.setOptometristId(1L);
-        }
+        if (prescription.getCustomerId() == null)
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Customer is required");
+        prescription.setId(null);
+        prescription.setOptometristId(com.glassstore.common.security.CurrentActor.id());
         if (prescription.getOdSph() == null) {
             prescription.setOdSph(BigDecimal.ZERO);
         }

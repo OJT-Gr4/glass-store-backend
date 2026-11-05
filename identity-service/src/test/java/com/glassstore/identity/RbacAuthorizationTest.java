@@ -25,6 +25,39 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 public class RbacAuthorizationTest {
 
+    @Test
+    void staffCreationRejectsAnonymousAndCustomers() throws Exception {
+        var request = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/users/staff")
+                .contentType("application/json").content("{}");
+        mockMvc.perform(request).andExpect(status().isUnauthorized());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/users/staff")
+                .header("Authorization","Bearer "+customerToken).contentType("application/json").content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void customerCannotReadAnotherUserProfile() throws Exception {
+        var own=userRepository.findByEmail("customer_test@example.com").orElseThrow();
+        var other=userRepository.findByEmail("staff_test@optivision.vn").orElseThrow();
+        mockMvc.perform(get("/api/users/"+own.getId()).header("Authorization","Bearer "+customerToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/users/"+other.getId()).header("Authorization","Bearer "+customerToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminCanCreateStaffButCannotMintServiceRoles() throws Exception {
+        String unique="day3-"+System.nanoTime();
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/users/staff")
+                .header("Authorization","Bearer "+adminToken).contentType("application/json")
+                .content("{\"username\":\""+unique+"\",\"email\":\""+unique+"@example.com\",\"fullName\":\"QA Staff\",\"roleName\":\"ROLE_SALES_STAFF\",\"password\":\"QaPassword123!\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/users/staff")
+                .header("Authorization","Bearer "+adminToken).contentType("application/json")
+                .content("{\"email\":\"forged-role@example.com\",\"roleName\":\"ROLE_SERVICE\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
     @Autowired
     private MockMvc mockMvc;
 

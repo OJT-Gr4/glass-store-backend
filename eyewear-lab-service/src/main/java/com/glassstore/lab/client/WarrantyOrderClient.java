@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
-@FeignClient(name = "order-pos-warranty", url = "${services.order-pos-service.url}")
+@FeignClient(configuration = ServiceClientSecurity.class, name = "order-pos-warranty", url = "${services.order-pos-service.url}")
 public interface WarrantyOrderClient {
 
     @GetMapping("/internal/warranty-items")

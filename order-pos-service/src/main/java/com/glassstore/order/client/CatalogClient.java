@@ -4,7 +4,7 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.*;
 
 /** Talks to catalog-service, which owns stock data. */
-@FeignClient(name = "catalog-service", url = "${services.catalog-service.url}")
+@FeignClient(configuration = ServiceClientSecurity.class, name = "catalog-service", url = "${services.catalog-service.url}")
 public interface CatalogClient {
 
     @GetMapping("/api/variants/sku/{sku}")

@@ -33,6 +33,7 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SALES_STAFF','OPTOMETRIST') or #id == authentication.principal.id")
     public ResponseEntity<ApiResponse<UserDTO>> getUserById(@PathVariable("id") Long id) {
         UserDTO user = userService.getUserById(id);
         return ResponseEntity.ok(ApiResponse.success("Lấy thông tin người dùng thành công", user));
@@ -46,6 +47,7 @@ public class UserController {
     }
 
     @PostMapping("/customers")
+    @PreAuthorize("hasAnyRole('ADMIN','SALES_STAFF','OPTOMETRIST')")
     public ResponseEntity<ApiResponse<UserDTO>> createCustomer(@RequestBody CreateCustomerRequest request) {
         UserDTO user = userService.createCustomer(request);
         return ResponseEntity.ok(ApiResponse.success("Tạo hồ sơ khách hàng thành công", user));

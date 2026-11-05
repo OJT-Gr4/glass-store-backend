@@ -5,15 +5,16 @@ import com.glassstore.common.exception.ErrorCode;
 import com.glassstore.order.client.LabClient;
 import com.glassstore.order.client.LabServiceClient;
 import com.glassstore.order.domain.*;
-import com.glassstore.order.dto.CreateLabJobRequest;
 import com.glassstore.order.dto.OrderDtos;
+import com.glassstore.order.dto.CreateLabJobRequest;
 import com.glassstore.order.entity.Order;
 import com.glassstore.order.entity.OrderItem;
+import com.glassstore.order.entity.OrderPrescription;
 import com.glassstore.order.entity.Payment;
 import com.glassstore.order.repository.OrderRepository;
 import com.glassstore.order.repository.PaymentRepository;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +33,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * Prices and totals are recomputed server-side (BR-05, BR-16).</p>
  */
 @Service
+@RequiredArgsConstructor
 @Slf4j
 public class OrderCheckoutService {
 
@@ -45,38 +47,6 @@ public class OrderCheckoutService {
     private final LabClient labClient;
     private final WarrantyActivationService warrantyActivationService;
     private final LabServiceClient labServiceClient;
-
-    @Autowired
-    public OrderCheckoutService(
-            OrderRepository orderRepository,
-            PaymentRepository paymentRepository,
-            BasketPricingService pricingService,
-            OrderStatusService orderStatusService,
-            OrderInventoryService inventoryService,
-            @Autowired(required = false) LabClient labClient,
-            WarrantyActivationService warrantyActivationService,
-            @Autowired(required = false) LabServiceClient labServiceClient) {
-        this.orderRepository = orderRepository;
-        this.paymentRepository = paymentRepository;
-        this.pricingService = pricingService;
-        this.orderStatusService = orderStatusService;
-        this.inventoryService = inventoryService;
-        this.labClient = labClient;
-        this.warrantyActivationService = warrantyActivationService;
-        this.labServiceClient = labServiceClient;
-    }
-
-    public OrderCheckoutService(
-            OrderRepository orderRepository,
-            PaymentRepository paymentRepository,
-            BasketPricingService pricingService,
-            OrderStatusService orderStatusService,
-            OrderInventoryService inventoryService,
-            LabClient labClient,
-            WarrantyActivationService warrantyActivationService) {
-        this(orderRepository, paymentRepository, pricingService, orderStatusService,
-                inventoryService, labClient, warrantyActivationService, null);
-    }
 
     @Transactional
     public CheckoutOutcome checkout(OrderDtos.CheckoutRequest request, String idempotencyKey) {
@@ -104,7 +74,13 @@ public class OrderCheckoutService {
                     "Giá sản phẩm đã thay đổi. Vui lòng xác nhận giá mới trước khi đặt hàng.", details);
         }
 
-        if (orderType.requiresPrescription() && request.getPrescriptionId() == null) {
+        if (request.getPrescription() != null && request.getPrescriptionId() != null) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Chỉ chọn một nguồn thông số toa kính");
+        }
+        if (request.getPrescription() != null && !request.getPrescription().isConfirmed()) {
+            throw ApiException.of(ErrorCode.PRESCRIPTION_INCOMPLETE, "Vui lòng xác nhận thông số đã cung cấp");
+        }
+        if (orderType.requiresPrescription() && request.getPrescriptionId() == null && request.getPrescription() == null) {
             throw ApiException.of(ErrorCode.PRESCRIPTION_INCOMPLETE,
                     "Đơn kính thuốc bắt buộc phải có toa kính đã được xác nhận");
         }
@@ -144,6 +120,13 @@ public class OrderCheckoutService {
                 .invoiceNumber(channel == SalesChannel.POS ? "INV-" + orderCode : null)
                 .build();
 
+        if (request.getPrescription() != null) {
+            var rx = request.getPrescription();
+            order.setPrescription(OrderPrescription.builder()
+                    .odSph(rx.getOdSph()).odCyl(rx.getOdCyl()).odAxis(rx.getOdAxis()).odAdd(rx.getOdAdd())
+                    .osSph(rx.getOsSph()).osCyl(rx.getOsCyl()).osAxis(rx.getOsAxis()).osAdd(rx.getOsAdd())
+                    .pd(rx.getPd()).source("CUSTOMER_PROVIDED").customerConfirmedAt(LocalDateTime.now()).build());
+        }
         for (OrderDtos.OrderItemSnapshot line : basket.getLines()) {
             order.getItems().add(OrderItem.builder()
                     .order(order)
@@ -240,6 +223,9 @@ public class OrderCheckoutService {
 
         // 1. Kiểm tra nếu đơn hàng có sản phẩm là kính thuốc (hoặc có gắn toa đo mắt prescription)
         boolean hasPrescription = order.getPrescriptionId() != null;
+        // A customer-provided snapshot must be reviewed before a clinical Lab job is created.
+        if (!hasPrescription && order.getPrescription() != null && (order.getItems() == null
+                || order.getItems().stream().noneMatch(item -> item.getPrescriptionId() != null))) return;
         boolean isPrescriptionOrder = order.getOrderType() != null && order.getOrderType().requiresPrescription();
         boolean hasPrescriptionItem = order.getItems() != null && order.getItems().stream().anyMatch(i ->
                 i.getPrescriptionId() != null || isLensSku(i.getSkuId(), i.getProductName()));
@@ -262,7 +248,7 @@ public class OrderCheckoutService {
         }
 
         // 1. Kiểm tra đơn hàng phải có Order.status == PAID
-        if (order.currentStatus() != OrderStatus.PAID) {
+        if (order.currentStatus() != OrderStatus.PAID && order.currentStatus() != OrderStatus.LAB_DISPATCH_FAILED) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR,
                     "Đơn hàng phải ở trạng thái PAID để gửi lệnh gia công sang Lab (trạng thái hiện tại: " + order.currentStatus() + ")");
         }
@@ -310,7 +296,7 @@ public class OrderCheckoutService {
 
         // Đúng khách hàng của đơn hàng
         Long rxCustomerId = asLong(rxMap.get("customerId"));
-        if (order.getCustomerId() != null && rxCustomerId != null && !order.getCustomerId().equals(rxCustomerId)) {
+        if (order.getCustomerId() == null || !order.getCustomerId().equals(rxCustomerId)) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR,
                     "Toa kính (customerId=" + rxCustomerId + ") không đúng khách hàng của đơn hàng (customerId=" + order.getCustomerId() + ")");
         }
@@ -476,6 +462,9 @@ public class OrderCheckoutService {
             }
         }
 
+        if (allSuccess && order.currentStatus() == OrderStatus.LAB_DISPATCH_FAILED) {
+            return orderStatusService.transition(order, OrderStatus.PAID, "SYSTEM", "Đã gửi lại lệnh gia công sang Lab");
+        }
         return order;
     }
 

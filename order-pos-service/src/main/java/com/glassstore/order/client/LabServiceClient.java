@@ -13,7 +13,7 @@ import java.util.Map;
 /**
  * OpenFeign Client gọi sang eyewear-lab-service (Port 8084).
  */
-@FeignClient(name = "eyewear-lab-service", contextId = "labServiceClient", url = "${services.eyewear-lab-service.url:http://localhost:8084}")
+@FeignClient(configuration = ServiceClientSecurity.class, name = "eyewear-lab-service", contextId = "labServiceClient", url = "${services.eyewear-lab-service.url:http://localhost:8084}")
 public interface LabServiceClient {
 
     @PostMapping("/api/lab-jobs")

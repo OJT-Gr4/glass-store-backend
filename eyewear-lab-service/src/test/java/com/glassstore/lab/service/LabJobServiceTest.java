@@ -9,7 +9,7 @@ import com.glassstore.lab.entity.LabJob;
 import com.glassstore.lab.entity.LabJobStatus;
 import com.glassstore.lab.entity.Prescription;
 import com.glassstore.lab.repository.LabJobRepository;
-import com.glassstore.lab.repository.LabJobStatusHistoryRepository;
+import com.glassstore.lab.repository.LabJobHistoryRepository;
 import com.glassstore.lab.repository.PrescriptionRepository;
 import com.glassstore.lab.service.impl.LabJobServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,7 +41,7 @@ class LabJobServiceTest {
     private PrescriptionRepository prescriptionRepository;
 
     @Mock
-    private LabJobStatusHistoryRepository historyRepository;
+    private LabJobHistoryRepository historyRepository;
 
     @InjectMocks
     private LabJobServiceImpl labJobService;
@@ -118,7 +118,7 @@ class LabJobServiceTest {
     @Test
     @DisplayName("Creates a lab job in PENDING state")
     void createLabJob() {
-        when(labJobRepository.findByOrderId(502L)).thenReturn(Optional.empty());
+        when(labJobRepository.findByIdempotencyKey("LAB_REQ_502_0")).thenReturn(Optional.empty());
         when(prescriptionRepository.findById(100L)).thenReturn(Optional.of(prescription));
         when(labJobRepository.save(any(LabJob.class))).thenAnswer(invocation -> {
             LabJob job = invocation.getArgument(0);
@@ -137,7 +137,7 @@ class LabJobServiceTest {
         LabJobResponse response = labJobService.createLabJob(request);
 
         assertThat(response.getId()).isEqualTo(10L);
-        assertThat(response.getStatus()).isEqualTo(LabJobStatus.PENDING);
+        assertThat(response.getStatus()).isEqualTo(LabJobStatus.CREATED);
         assertThat(response.getCustomerName()).isEqualTo("Trần Văn A");
         assertThat(response.getOdSphere()).isEqualByComparingTo("-2.25");
         verify(historyRepository).save(any());
@@ -146,7 +146,7 @@ class LabJobServiceTest {
     @Test
     @DisplayName("Returns the existing job for a repeated order")
     void createFromOrderIsIdempotent() {
-        when(labJobRepository.findByOrderId(501L)).thenReturn(Optional.of(pendingJob));
+        when(labJobRepository.findByIdempotencyKey("LAB_REQ_501_0")).thenReturn(Optional.of(pendingJob));
         when(prescriptionRepository.findById(100L)).thenReturn(Optional.of(prescription));
 
         LabJobResponse result = labJobService.createFromOrder(
@@ -159,7 +159,7 @@ class LabJobServiceTest {
     @Test
     @DisplayName("Rejects an incomplete prescription before fabrication")
     void incompletePrescription() {
-        when(labJobRepository.findByOrderId(501L)).thenReturn(Optional.empty());
+        when(labJobRepository.findByIdempotencyKey("LAB_REQ_501_0")).thenReturn(Optional.empty());
         when(prescriptionRepository.findById(100L)).thenReturn(Optional.of(Prescription.builder()
                 .id(100L)
                 .customerId(10L)
@@ -172,7 +172,7 @@ class LabJobServiceTest {
                 501L, 100L, "FRAME", null, "LENS", null, "Tech"))
                 .isInstanceOf(ApiException.class)
                 .extracting(exception -> ((ApiException) exception).getErrorCode())
-                .isEqualTo(ErrorCode.PRESCRIPTION_INCOMPLETE);
+                .isEqualTo(ErrorCode.VALIDATION_ERROR);
     }
 
     @Test
@@ -250,5 +250,25 @@ class LabJobServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting(exception -> ((ApiException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.LAB_JOB_INVALID_TRANSITION);
+    }
+
+    @Test
+    void failedQcCannotBeMarkedCompleted() {
+        pendingJob.setStatus(LabJobStatus.QC_FAILED);
+        when(labJobRepository.findById(1L)).thenReturn(Optional.of(pendingJob));
+        assertThatThrownBy(() -> labJobService.updateJobStatus(1L,
+                UpdateJobStatusRequest.builder().status(LabJobStatus.COMPLETED).build()))
+                .isInstanceOf(ApiException.class);
+        verify(labJobRepository, never()).save(any());
+        verifyNoInteractions(historyRepository);
+    }
+
+    @Test
+    void rawMeasurementsCannotCreateAnInventedClinicalPrescription() {
+        var request = CreateLabJobRequest.builder().orderId(501L)
+                .odSphere(BigDecimal.ZERO).osSphere(BigDecimal.ZERO).pd(new BigDecimal("63")).build();
+        assertThatThrownBy(() -> labJobService.createLabJob(request)).isInstanceOf(ApiException.class);
+        verify(prescriptionRepository, never()).save(any());
+        verify(labJobRepository, never()).save(any());
     }
 }

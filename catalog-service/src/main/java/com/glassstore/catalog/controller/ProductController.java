@@ -18,6 +18,20 @@ public class ProductController {
 
     private final ProductService productService;
 
+    private boolean publicReader() {
+        var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        return auth == null || auth.getAuthorities().stream().noneMatch(a -> java.util.Set.of(
+            "ROLE_ADMIN","ROLE_SALES_STAFF","ROLE_OPTOMETRIST","ROLE_LAB_TECH","ROLE_LAB","ROLE_SERVICE").contains(a.getAuthority()));
+    }
+    private ProductResponseDTO publicProduct(ProductResponseDTO product) {
+        if (publicReader()) {
+            if (!"ACTIVE".equals(product.getStatus()))
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND);
+            if (product.getVariants() != null) product.setVariants(product.getVariants().stream().filter(v -> "ACTIVE".equals(v.getStatus())).toList());
+        }
+        return product;
+    }
+
     @GetMapping("/lens-recommendations")
     public ResponseEntity<ApiResponse<LensRecommendation>> recommendLenses(
             @RequestParam("odSph") java.math.BigDecimal odSph,
@@ -52,19 +66,20 @@ public class ProductController {
             @RequestParam(name = "productType", required = false) ProductType productType,
             @RequestParam(name = "status", required = false) String status) {
         
-        List<ProductResponseDTO> products = productService.getAllProducts(categoryId, productType, status);
+        List<ProductResponseDTO> products = productService.getAllProducts(categoryId, productType, publicReader() ? "ACTIVE" : status);
+        if (publicReader()) products=products.stream().map(this::publicProduct).toList();
         return ResponseEntity.ok(ApiResponse.success("Lấy danh sách sản phẩm thành công", products));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ProductResponseDTO>> getProductById(@PathVariable("id") Long id) {
         ProductResponseDTO product = productService.getProductById(id);
-        return ResponseEntity.ok(ApiResponse.success("Lấy chi tiết sản phẩm thành công", product));
+        return ResponseEntity.ok(ApiResponse.success("Lấy chi tiết sản phẩm thành công", publicProduct(product)));
     }
 
     @GetMapping("/slug/{slug}")
     public ResponseEntity<ApiResponse<ProductResponseDTO>> getProductBySlug(@PathVariable("slug") String slug) {
         ProductResponseDTO product = productService.getProductBySlug(slug);
-        return ResponseEntity.ok(ApiResponse.success("Lấy chi tiết sản phẩm thành công", product));
+        return ResponseEntity.ok(ApiResponse.success("Lấy chi tiết sản phẩm thành công", publicProduct(product)));
     }
 }

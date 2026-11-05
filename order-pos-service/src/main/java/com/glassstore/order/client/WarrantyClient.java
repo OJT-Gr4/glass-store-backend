@@ -7,9 +7,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.Map;
 
-@FeignClient(name = "eyewear-lab-warranty", url = "${services.eyewear-lab-service.url}")
+@FeignClient(configuration = ServiceClientSecurity.class, name = "eyewear-lab-warranty", url = "${services.eyewear-lab-service.url}")
 public interface WarrantyClient {
 
-    @PostMapping("/api/warranties")
+    @PostMapping("/api/warranties/activate")
     Map<String, Object> activate(@RequestBody WarrantyActivationRequest request);
 }

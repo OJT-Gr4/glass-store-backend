@@ -70,14 +70,16 @@ class OrderStateMachineTest {
     }
 
     @Test
-    @DisplayName("OMS standard workflow: PAID -> PROCESSING (PREPARING) -> SHIPPING -> COMPLETED or CANCELLED")
+    @DisplayName("OMS permits preparation after payment; paid cancellations require reconciliation")
     void omsStandardWorkflow() {
         assertThat(OrderStatus.PAID.canTransitionTo(OrderStatus.PREPARING)).isTrue();
         assertThat(OrderStatus.PREPARING.canTransitionTo(OrderStatus.SHIPPING)).isTrue();
         assertThat(OrderStatus.SHIPPING.canTransitionTo(OrderStatus.COMPLETED)).isTrue();
-        assertThat(OrderStatus.PAID.canTransitionTo(OrderStatus.CANCELLED)).isTrue();
-        assertThat(OrderStatus.PREPARING.canTransitionTo(OrderStatus.CANCELLED)).isTrue();
-        assertThat(OrderStatus.SHIPPING.canTransitionTo(OrderStatus.CANCELLED)).isTrue();
+        assertThat(OrderStatus.PAID.canTransitionTo(OrderStatus.CANCELLED)).isFalse();
+        assertThat(OrderStatus.PREPARING.canTransitionTo(OrderStatus.CANCELLED)).isFalse();
+        assertThat(OrderStatus.SHIPPING.canTransitionTo(OrderStatus.CANCELLED)).isFalse();
+        assertThat(OrderStatus.PAID.canTransitionTo(OrderStatus.CANCEL_PENDING)).isTrue();
+        assertThat(OrderStatus.PREPARING.canTransitionTo(OrderStatus.REFUND_PENDING)).isTrue();
     }
 
     @Test

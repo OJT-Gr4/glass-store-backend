@@ -17,6 +17,7 @@
     <name>GlassStore :: Order POS Service</name>
 
     <dependencies>
+        <dependency><groupId>org.springframework.security</groupId><artifactId>spring-security-test</artifactId><scope>test</scope></dependency>
         <dependency>
             <groupId>com.glassstore</groupId>
             <artifactId>common-lib</artifactId>

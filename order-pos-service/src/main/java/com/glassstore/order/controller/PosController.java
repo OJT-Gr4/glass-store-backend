@@ -29,7 +29,7 @@ public class PosController {
     public ResponseEntity<ApiResponse<PosSession>> openSession(@RequestBody OpenSessionRequest body) {
         return ResponseEntity.status(HttpStatus.CREATED).body(
                 ApiResponse.success("Đã mở phiên bán hàng",
-                        posService.openSession(body == null ? null : body.getStaffName(),
+                        posService.openSession(com.glassstore.common.security.CurrentActor.name(),
                                 body == null ? null : body.getBranchName())));
     }
 
@@ -70,6 +70,7 @@ public class PosController {
     public ResponseEntity<ApiResponse<Order>> checkout(
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody OrderDtos.CheckoutRequest request) {
+        request.setStaffName(com.glassstore.common.security.CurrentActor.name());
         OrderCheckoutService.CheckoutOutcome outcome = posService.checkout(request, idempotencyKey);
         HttpStatus status = outcome.replayed() ? HttpStatus.OK : HttpStatus.CREATED;
         return ResponseEntity.status(status).body(

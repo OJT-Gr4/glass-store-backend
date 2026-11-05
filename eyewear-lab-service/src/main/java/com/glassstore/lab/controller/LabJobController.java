@@ -17,7 +17,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/lab-jobs")
@@ -29,6 +28,18 @@ public class LabJobController {
     private final LabJobService labJobService;
     private final LabJobRepository labJobRepository;
     private final LabJobHistoryRepository historyRepository;
+
+    @GetMapping("/by-order/{orderId}")
+    public ResponseEntity<ApiResponse<LabJobResponse>> getByOrder(@PathVariable("orderId") Long orderId) {
+        var jobs = labJobRepository.findAllByOrderIdOrderByIdAsc(orderId);
+        if (jobs.isEmpty()) throw new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND);
+        // Report an unfinished job first: one passed item cannot release the whole order.
+        var passed = java.util.Set.of(LabJobStatus.QC_PASSED, LabJobStatus.READY_FOR_DELIVERY,
+                LabJobStatus.DELIVERED, LabJobStatus.COMPLETED);
+        var job = jobs.stream().filter(item -> !passed.contains(item.getStatus())).findFirst().orElse(jobs.getFirst());
+        return ResponseEntity.ok(ApiResponse.success("OK", labJobService.getLabJobById(job.getId())));
+    }
+
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<LabJobResponse>>> getLabJobs(
@@ -54,15 +65,10 @@ public class LabJobController {
 
     @PostMapping("/from-order")
     public ResponseEntity<ApiResponse<LabJobResponse>> createFromOrder(
-            @RequestBody Map<String, Object> body) {
-        LabJobResponse job = labJobService.createFromOrder(
-                asLong(body.get("orderId")),
-                asLong(body.get("prescriptionId")),
-                asString(body.get("frameSku")),
-                asString(body.get("frameName")),
-                asString(body.get("lensSku")),
-                asString(body.get("lensName")),
-                asString(body.get("technicianName")));
+            @Valid @RequestBody CreateLabJobRequest request) {
+        request.setTechnicianName(com.glassstore.common.security.CurrentActor.name());
+        request.setTechnicianId(null);
+        LabJobResponse job = labJobService.createLabJob(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Tạo lệnh gia công thành công", job));
     }
@@ -71,6 +77,8 @@ public class LabJobController {
     public ResponseEntity<ApiResponse<LabJobResponse>> createLabJob(
             @Valid @RequestBody CreateLabJobRequest request) {
         log.info("API POST /api/lab-jobs - Request: {}", request);
+        request.setTechnicianName(com.glassstore.common.security.CurrentActor.name());
+        request.setTechnicianId(null);
         String key = request.getEffectiveIdempotencyKey();
         boolean exists = key != null && labJobRepository.findByIdempotencyKey(key).isPresent();
 
@@ -89,21 +97,10 @@ public class LabJobController {
             @PathVariable("id") Long id,
             @Valid @RequestBody UpdateJobStatusRequest request) {
         log.info("API PATCH /api/lab-jobs/{}/status - Request: {}", id, request);
+        request.setTechnicianName(com.glassstore.common.security.CurrentActor.name());
+        request.setTechnicianId(com.glassstore.common.security.CurrentActor.id());
         LabJobResponse updated = labJobService.updateJobStatus(id, request);
         return ResponseEntity.ok(ApiResponse.success("Cập nhật trạng thái gia công QC thành công", updated));
     }
 
-    private Long asLong(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        return Long.valueOf(value.toString());
-    }
-
-    private String asString(Object value) {
-        return value == null ? null : value.toString();
-    }
 }

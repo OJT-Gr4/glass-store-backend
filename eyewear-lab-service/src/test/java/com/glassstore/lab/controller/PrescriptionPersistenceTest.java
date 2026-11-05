@@ -22,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
+@org.springframework.security.test.context.support.WithMockUser(username="1", roles="ADMIN")
 class PrescriptionPersistenceTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper mapper;

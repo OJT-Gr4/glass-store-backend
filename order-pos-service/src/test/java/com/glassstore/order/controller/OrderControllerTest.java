@@ -19,6 +19,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class OrderControllerTest {
+    @org.junit.jupiter.api.BeforeEach void authenticate() {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+            new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("1","",java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+    }
+    @org.junit.jupiter.api.AfterEach void clearAuthentication() { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
+
 
     @Test
     void posVietQrCheckoutMarksOrderPaidAfterCounterConfirmation() {
@@ -28,7 +34,7 @@ class OrderControllerTest {
         OrderCheckoutService checkoutService = mock(OrderCheckoutService.class);
         OrderStatusService orderStatusService = mock(OrderStatusService.class);
         OrderService posService = mock(OrderService.class);
-        OrderController controller = new OrderController(posService, mock(OrderCancellationService.class),
+        OrderController controller = new OrderController(mock(com.glassstore.order.service.OmsWorkflowService.class), posService, mock(OrderCancellationService.class),
                 mock(StockDeductionService.class), orderRepository, paymentRepository,
                 historyRepository, checkoutService, orderStatusService);
 
@@ -65,7 +71,7 @@ class OrderControllerTest {
     void onlineCheckoutKeepsTheTeamCheckoutAndReplayContract() {
         OrderCheckoutService checkout = mock(OrderCheckoutService.class);
         OrderService pos = mock(OrderService.class);
-        OrderController controller = new OrderController(pos, mock(OrderCancellationService.class),
+        OrderController controller = new OrderController(mock(com.glassstore.order.service.OmsWorkflowService.class), pos, mock(OrderCancellationService.class),
                 mock(StockDeductionService.class), mock(OrderRepository.class), mock(PaymentRepository.class),
                 mock(OrderStatusHistoryRepository.class), checkout, mock(OrderStatusService.class));
         OrderDtos.CheckoutRequest request = OrderDtos.CheckoutRequest.builder().channel("ONLINE")
@@ -81,7 +87,7 @@ class OrderControllerTest {
     @Test
     void legacyPosJsonReachesSharedDtoWithoutLosingPrescriptionOrBenefits() throws Exception {
         OrderService pos = mock(OrderService.class);
-        OrderController controller = new OrderController(pos, mock(OrderCancellationService.class),
+        OrderController controller = new OrderController(mock(com.glassstore.order.service.OmsWorkflowService.class), pos, mock(OrderCancellationService.class),
                 mock(StockDeductionService.class), mock(OrderRepository.class), mock(PaymentRepository.class),
                 mock(OrderStatusHistoryRepository.class), mock(OrderCheckoutService.class), mock(OrderStatusService.class));
         when(pos.createCounterSale(any(), eq("key"), eq("Bearer staff")))

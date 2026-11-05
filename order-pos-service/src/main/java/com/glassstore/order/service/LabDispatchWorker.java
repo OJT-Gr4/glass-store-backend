@@ -31,21 +31,31 @@ public class LabDispatchWorker {
         }
         entry.setAttempts(entry.getAttempts()+1);
         try {
-            Map<String,Object> payload = new LinkedHashMap<>();
-            payload.put("orderId",order.getId()); payload.put("prescriptionId",order.getPrescriptionId());
-            payload.put("customerName",order.getCustomerName());
-            for (var item : order.getItems()) {
-                String sku = Objects.toString(item.getSkuId(),"").toUpperCase(Locale.ROOT);
-                if (sku.startsWith("LNS-") || sku.startsWith("LZ-")) {
-                    payload.put("lensSku",item.getSkuId()); payload.put("lensName",item.getProductName());
-                } else if (!sku.startsWith("ACC-")) {
-                    payload.put("frameSku",item.getSkuId()); payload.put("frameName",item.getProductName());
-                }
+            var lensItems = order.getItems().stream().filter(item -> {
+                String sku = Objects.toString(item.getSkuId(), "").toUpperCase(Locale.ROOT);
+                return item.getPrescriptionId() != null || sku.startsWith("LNS-") || sku.startsWith("LZ-")
+                        || sku.contains("LENS") || Objects.toString(item.getProductName(), "").toLowerCase(Locale.ROOT).contains("tròng");
+            }).toList();
+            if (lensItems.isEmpty()) throw new IllegalStateException("Đơn chưa có mặt hàng tròng kính để gia công");
+            Long firstJobId = null;
+            for (var item : lensItems) {
+                if (item.getId() == null) throw new IllegalStateException("Mặt hàng gia công chưa được lưu");
+                Map<String,Object> payload = new LinkedHashMap<>();
+                payload.put("orderId", order.getId()); payload.put("orderItemId", item.getId());
+                payload.put("prescriptionId", item.getPrescriptionId() != null ? item.getPrescriptionId() : order.getPrescriptionId());
+                payload.put("idempotencyKey", "LAB_REQ_" + order.getId() + "_" + item.getId());
+                payload.put("orderCode", order.getOrderCode()); payload.put("customerId", order.getCustomerId());
+                payload.put("customerName", order.getCustomerName()); payload.put("sku", item.getSkuId());
+                payload.put("lensSku", item.getSkuId()); payload.put("lensName", item.getProductName());
+                order.getItems().stream().filter(candidate -> !lensItems.contains(candidate)).findFirst().ifPresent(frame -> {
+                    payload.put("frameSku", frame.getSkuId()); payload.put("frameName", frame.getProductName());
+                });
+                var response = lab.createFromOrder(payload);
+                Object jobId = response == null || response.getData() == null ? null : response.getData().get("id");
+                if (jobId == null) throw new IllegalStateException("Lab chưa trả về mã lệnh đã lưu");
+                if (firstJobId == null) firstJobId = Long.valueOf(jobId.toString());
             }
-            var response = lab.createFromOrder(payload);
-            Object jobId = response == null || response.getData() == null ? null : response.getData().get("id");
-            if (jobId == null) throw new IllegalStateException("Lab chưa trả về mã lệnh đã lưu");
-            entry.setLabJobId(Long.valueOf(jobId.toString())); entry.setStatus("SYNCED");
+            entry.setLabJobId(firstJobId); entry.setStatus("SYNCED");
             entry.setLastError(null); entry.setProcessedAt(LocalDateTime.now());
         } catch (RuntimeException error) {
             String message = Objects.toString(error.getMessage(),"Lab unavailable");
