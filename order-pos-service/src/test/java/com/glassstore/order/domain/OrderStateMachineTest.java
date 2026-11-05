@@ -87,4 +87,26 @@ class OrderStateMachineTest {
         assertThat(OrderStatus.PREPARING.isPaidLike()).isTrue();
         assertThat(OrderStatus.PENDING_PAYMENT.isPaidLike()).isFalse();
     }
+
+    @Test
+    @DisplayName("GS-133: Backend rejects invalid status hops and terminal revivals")
+    void backendRejectsInvalidTransitions() {
+        // Cannot jump to SHIPPING before payment
+        assertThatThrownBy(() -> OrderStateMachine.requireTransition(
+                OrderStatus.PENDING_PAYMENT, OrderStatus.SHIPPING))
+                .isInstanceOf(com.glassstore.common.exception.ApiException.class)
+                .hasMessageContaining("Không thể chuyển");
+
+        // Cannot revive CANCELLED order
+        assertThatThrownBy(() -> OrderStateMachine.requireTransition(
+                OrderStatus.CANCELLED, OrderStatus.COMPLETED))
+                .isInstanceOf(com.glassstore.common.exception.ApiException.class)
+                .hasMessageContaining("Không thể chuyển");
+
+        // Cannot alter COMPLETED order
+        assertThatThrownBy(() -> OrderStateMachine.requireTransition(
+                OrderStatus.COMPLETED, OrderStatus.CANCELLED))
+                .isInstanceOf(com.glassstore.common.exception.ApiException.class)
+                .hasMessageContaining("Không thể chuyển");
+    }
 }
