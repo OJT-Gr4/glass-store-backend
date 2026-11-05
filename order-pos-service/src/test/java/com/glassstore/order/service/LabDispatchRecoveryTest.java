@@ -38,14 +38,15 @@ class LabDispatchRecoveryTest {
     @BeforeEach void prepare() throws Exception {
         stockOutbox.deleteAll(); outbox.deleteAll(); history.deleteAll(); payments.deleteAll(); orderRepository.deleteAll();
         when(data.actor(any(),anyBoolean())).thenReturn(new ObjectMapper().readTree("{\"id\":1,\"roles\":[\"ROLE_ADMIN\"]}"));
-        when(data.catalogPrices()).thenReturn(Map.of("FRM-QA",new BigDecimal("1000000"),"LNS-QA",new BigDecimal("500000")));
+        when(data.catalogItems()).thenReturn(Map.of("FRM-QA", new PosDataService.CatalogItem(new BigDecimal("1000000"), "QA frame", "FRAME", true),
+                "LNS-QA", new PosDataService.CatalogItem(new BigDecimal("500000"), "QA lens", "LENS", true)));
         when(stockWorker.process(anyLong())).thenReturn("SYNCED");
     }
     private OrderDtos.CheckoutRequest request() throws Exception {
         return new ObjectMapper().readValue("""
             {"channel":"POS","customerId":10,"customerName":"QA Lab","customerPhone":"0901234567",
              "paymentMethod":"CASH","orderType":"COMPLETE_GLASSES","branchCode":"BRANCH_01","cashReceived":2000000,
-             "prescriptionId":7,"items":[{"sku":"FRM-QA","quantity":1},{"sku":"LNS-QA","quantity":1,"prescriptionId":7}]}
+             "prescriptionId":7,"items":[{"sku":"FRM-QA","quantity":1,"expectedUnitPrice":1000000},{"sku":"LNS-QA","quantity":1,"prescriptionId":7,"expectedUnitPrice":500000}]}
             """,OrderDtos.CheckoutRequest.class);
     }
     @Test void committedSaleRetriesDeliveryWithoutDuplicatingTheOrderOrLabRequest() throws Exception {

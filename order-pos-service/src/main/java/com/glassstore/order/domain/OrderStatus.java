@@ -18,6 +18,8 @@ public enum OrderStatus {
     PENDING_PAYMENT,
     /** Payment verified by the backend. */
     PAID,
+    /** Dispatch to eyewear-lab-service failed after retries. */
+    LAB_DISPATCH_FAILED,
     /** Paid, waiting for staff to accept. */
     PENDING_CONFIRMATION,
     /** Staff accepted. */
@@ -47,13 +49,14 @@ public enum OrderStatus {
      */
     private static final Map<OrderStatus, Set<OrderStatus>> ALLOWED = Map.ofEntries(
             Map.entry(PENDING_PAYMENT, EnumSet.of(PAID, CANCELLED, CANCEL_REQUESTED)),
-            Map.entry(PAID, EnumSet.of(PREPARING, CONFIRMED, PENDING_CONFIRMATION, CANCEL_REQUESTED, CANCEL_PENDING, REFUND_PENDING, CANCELLED)),
+            Map.entry(PAID, EnumSet.of(PENDING_CONFIRMATION, CONFIRMED, CANCEL_REQUESTED, CANCEL_PENDING, REFUND_PENDING, LAB_DISPATCH_FAILED)),
+            Map.entry(LAB_DISPATCH_FAILED, EnumSet.of(PAID, PENDING_CONFIRMATION, CONFIRMED, CANCEL_REQUESTED, CANCEL_PENDING, REFUND_PENDING, CANCELLED)),
             Map.entry(CANCEL_PENDING, EnumSet.of(CANCELLED)),
             Map.entry(PENDING_CONFIRMATION, EnumSet.of(CONFIRMED, CANCEL_REQUESTED, REFUND_PENDING)),
             Map.entry(CONFIRMED, EnumSet.of(PREPARING, SHIPPING, READY_FOR_PICKUP, CANCEL_REQUESTED, REFUND_PENDING)),
-            Map.entry(PREPARING, EnumSet.of(SHIPPING, READY_FOR_PICKUP, CANCEL_REQUESTED, REFUND_PENDING, CANCELLED)),
-            Map.entry(SHIPPING, EnumSet.of(COMPLETED, CANCELLED)),
-            Map.entry(READY_FOR_PICKUP, EnumSet.of(COMPLETED, CANCELLED)),
+            Map.entry(PREPARING, EnumSet.of(SHIPPING, READY_FOR_PICKUP, CANCEL_REQUESTED, REFUND_PENDING)),
+            Map.entry(SHIPPING, EnumSet.of(COMPLETED)),
+            Map.entry(READY_FOR_PICKUP, EnumSet.of(COMPLETED)),
             Map.entry(CANCEL_REQUESTED, EnumSet.of(CANCELLED, REFUND_PENDING, CONFIRMED)),
             Map.entry(REFUND_PENDING, EnumSet.of(REFUNDED)),
             Map.entry(COMPLETED, EnumSet.noneOf(OrderStatus.class)),
@@ -67,11 +70,11 @@ public enum OrderStatus {
 
     /** States in which a customer may still request cancellation (OQ-10). */
     private static final Set<OrderStatus> CUSTOMER_CANCELLABLE = Collections.unmodifiableSet(
-            EnumSet.of(PENDING_PAYMENT, PAID, PENDING_CONFIRMATION, CONFIRMED));
+            EnumSet.of(PENDING_PAYMENT, PAID, LAB_DISPATCH_FAILED, PENDING_CONFIRMATION, CONFIRMED));
 
     /** States in which staff may still cancel (OQ-10). */
     private static final Set<OrderStatus> STAFF_CANCELLABLE = Collections.unmodifiableSet(
-            EnumSet.of(PENDING_PAYMENT, PAID, PENDING_CONFIRMATION, CONFIRMED, PREPARING, SHIPPING, CANCEL_REQUESTED));
+            EnumSet.of(PENDING_PAYMENT, PAID, LAB_DISPATCH_FAILED, PENDING_CONFIRMATION, CONFIRMED, PREPARING, CANCEL_REQUESTED));
 
     public boolean canTransitionTo(OrderStatus target) {
         if (target == null) {

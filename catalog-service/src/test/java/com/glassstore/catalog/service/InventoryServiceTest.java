@@ -4,6 +4,7 @@ import com.glassstore.catalog.dto.StockDeductionRequest;
 import com.glassstore.catalog.dto.StockDeductionResponse;
 import com.glassstore.catalog.entity.InventoryBalance;
 import com.glassstore.catalog.entity.InventoryDeduction;
+import com.glassstore.catalog.entity.InventoryMovement;
 import com.glassstore.catalog.repository.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,20 +23,16 @@ import static org.mockito.Mockito.*;
 class InventoryServiceTest {
 
     @Mock
-    private InventoryLocationRepository locationRepository;
-    @Mock
     private InventoryBalanceRepository balanceRepository;
     @Mock
     private InventoryMovementRepository movementRepository;
     @Mock
     private InventoryDeductionRepository deductionRepository;
     @Mock
-    private StockTransferRepository transferRepository;
-    @Mock
     private ProductVariantRepository variantRepository;
 
     @InjectMocks
-    private InventoryService inventoryService;
+    private PaidOrderStockDeductionService inventoryService;
 
     @Test
     void paidOrderDeductsTheResolvedBranchExactlyOnce() {
@@ -48,7 +45,7 @@ class InventoryServiceTest {
         when(balanceRepository.decrementIfAvailable("FRAME-001", InventoryService.BRANCH_02, 3)).thenReturn(1);
         when(variantRepository.decrementStockIfAvailable("FRAME-001", 3)).thenReturn(1);
 
-        StockDeductionResponse response = inventoryService.deductPaidOrder(request);
+        StockDeductionResponse response = inventoryService.deduct(request);
 
         assertEquals(InventoryService.BRANCH_02, response.locationCode());
         assertFalse(response.duplicate());
@@ -71,11 +68,20 @@ class InventoryServiceTest {
                 .locationCode(InventoryService.BRANCH_02)
                 .build();
         when(deductionRepository.findByOrderId(42L)).thenReturn(Optional.of(prior));
+        when(movementRepository.findAllByReferenceTypeAndReferenceId("PAYMENT", "TXN-42"))
+                .thenReturn(java.util.List.of(InventoryMovement.builder()
+                        .movementType("SALE")
+                        .sku("FRAME-001")
+                        .sourceLocationCode(InventoryService.BRANCH_02)
+                        .quantity(3)
+                        .build()));
 
-        StockDeductionResponse response = inventoryService.deductPaidOrder(request);
+        StockDeductionResponse response = inventoryService.deduct(request);
 
         assertTrue(response.duplicate());
-        verifyNoInteractions(balanceRepository, movementRepository, variantRepository);
+        verifyNoInteractions(balanceRepository, variantRepository);
+        verify(movementRepository).findAllByReferenceTypeAndReferenceId("PAYMENT", "TXN-42");
+        verify(movementRepository, never()).save(any());
     }
 
     @Test
@@ -89,7 +95,7 @@ class InventoryServiceTest {
         when(balanceRepository.decrementIfAvailable("FRAME-001", InventoryService.BRANCH_02, 3)).thenReturn(0);
         when(variantRepository.decrementStockIfAvailable("FRAME-001", 3)).thenReturn(1);
 
-        assertThrows(ResponseStatusException.class, () -> inventoryService.deductPaidOrder(request));
+        assertThrows(ResponseStatusException.class, () -> inventoryService.deduct(request));
         verify(movementRepository, never()).save(any());
     }
 

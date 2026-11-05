@@ -2,15 +2,15 @@ package com.glassstore.lab.service.impl;
 
 import com.glassstore.common.exception.ApiException;
 import com.glassstore.common.exception.ErrorCode;
-import com.glassstore.lab.domain.LabJobStatus;
 import com.glassstore.lab.dto.CreateLabJobRequest;
 import com.glassstore.lab.dto.LabJobResponse;
 import com.glassstore.lab.dto.UpdateJobStatusRequest;
 import com.glassstore.lab.entity.LabJob;
-import com.glassstore.lab.entity.LabJobStatusHistory;
+import com.glassstore.lab.entity.LabJobHistory;
+import com.glassstore.lab.entity.LabJobStatus;
 import com.glassstore.lab.entity.Prescription;
+import com.glassstore.lab.repository.LabJobHistoryRepository;
 import com.glassstore.lab.repository.LabJobRepository;
-import com.glassstore.lab.repository.LabJobStatusHistoryRepository;
 import com.glassstore.lab.repository.PrescriptionRepository;
 import com.glassstore.lab.service.LabJobService;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -34,11 +35,11 @@ public class LabJobServiceImpl implements LabJobService {
 
     private final LabJobRepository labJobRepository;
     private final PrescriptionRepository prescriptionRepository;
-    private final LabJobStatusHistoryRepository historyRepository;
+    private final LabJobHistoryRepository historyRepository;
 
     @Override
     @Transactional(readOnly = true)
-    public List<LabJobResponse> getLabJobs(com.glassstore.lab.entity.LabJobStatus status) {
+    public List<LabJobResponse> getLabJobs(LabJobStatus status) {
         List<LabJob> jobs = status == null
                 ? labJobRepository.findAllByOrderByCreatedAtDesc()
                 : labJobRepository.findByStatusOrderByCreatedAtDesc(status);
@@ -73,17 +74,109 @@ public class LabJobServiceImpl implements LabJobService {
     @Override
     @Transactional
     public LabJobResponse createLabJob(CreateLabJobRequest request) {
-        return createFromOrder(
-                request.getOrderId(),
-                request.getPrescriptionId(),
-                request.getFrameSku(),
-                request.getFrameName(),
-                request.getLensSku(),
-                request.getLensName(),
-                request.getTechnicianName(),
-                request.getTechnicianId(),
-                request.getTechnicianNotes(),
-                request.getCustomerName());
+        if (request.getOrderId() == null) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Thiếu mã đơn hàng để tạo lệnh gia công");
+        }
+
+        String key = request.getEffectiveIdempotencyKey();
+
+        // 1. Kiểm tra IdempotencyKey chống sinh trùng
+        Optional<LabJob> existingByKey = labJobRepository.findByIdempotencyKey(key);
+        if (existingByKey.isPresent()) {
+            log.info("LabJob với idempotencyKey {} đã tồn tại, trả về job hiện tại", key);
+            return getResponse(existingByKey.get());
+        }
+
+        final Long requestedRxId = request.getEffectivePrescriptionId();
+        Long prescriptionId = requestedRxId;
+        Prescription prescription = null;
+        if (requestedRxId != null) {
+            prescription = prescriptionRepository.findById(requestedRxId)
+                    .orElseThrow(() -> ApiException.of(ErrorCode.VALIDATION_ERROR,
+                            "Không tìm thấy toa kính với ID: " + requestedRxId));
+        }
+
+        // Tự động tạo và lưu toa kính nếu chưa có nhưng request truyền các thông số khúc xạ
+        if (prescription == null && (request.getEffectiveOdSphere() != null || request.getEffectiveOsSphere() != null || request.getEffectivePd() != null)) {
+            prescription = Prescription.builder()
+                    .customerId(request.getCustomerId() != null ? request.getCustomerId() : 1L)
+                    .customerName(request.getCustomerName() != null ? request.getCustomerName() : "Khách hàng POS")
+                    .optometristId(1L)
+                    .optometristName("Hệ thống POS")
+                    .odSph(request.getEffectiveOdSphere() != null ? request.getEffectiveOdSphere() : BigDecimal.ZERO)
+                    .odCyl(request.getEffectiveOdCyl() != null ? request.getEffectiveOdCyl() : BigDecimal.ZERO)
+                    .odAxis(request.getEffectiveOdAxis() != null ? request.getEffectiveOdAxis() : 0)
+                    .odAdd(request.getEffectiveOdAdd() != null ? request.getEffectiveOdAdd() : BigDecimal.ZERO)
+                    .osSph(request.getEffectiveOsSphere() != null ? request.getEffectiveOsSphere() : BigDecimal.ZERO)
+                    .osCyl(request.getEffectiveOsCyl() != null ? request.getEffectiveOsCyl() : BigDecimal.ZERO)
+                    .osAxis(request.getEffectiveOsAxis() != null ? request.getEffectiveOsAxis() : 0)
+                    .osAdd(request.getEffectiveOsAdd() != null ? request.getEffectiveOsAdd() : BigDecimal.ZERO)
+                    .pd(request.getEffectivePd() != null ? request.getEffectivePd() : new BigDecimal("63.0"))
+                    .notes(request.getPrescription() != null ? request.getPrescription().getNotes() : null)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            prescription = prescriptionRepository.save(prescription);
+            prescriptionId = prescription.getId();
+        }
+
+        if (prescription == null) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Thiếu thông tin toa kính cho lệnh gia công");
+        }
+
+        // Kiểm tra đúng khách hàng của đơn hàng
+        if (request.getCustomerId() != null && prescription.getCustomerId() != null
+                && !request.getCustomerId().equals(prescription.getCustomerId())) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Toa kính không đúng khách hàng của đơn hàng");
+        }
+
+        requireCompletePrescription(prescription);
+
+        String resolvedCustomerName = request.getCustomerName() == null || request.getCustomerName().isBlank()
+                ? (prescription != null ? prescription.getCustomerName() : "Khách hàng")
+                : request.getCustomerName();
+
+        String sku = request.getSku();
+        if (sku == null || sku.isBlank()) {
+            sku = request.getLensSku() != null ? request.getLensSku() : request.getFrameSku();
+        }
+
+        LabJob job = LabJob.builder()
+                .idempotencyKey(key)
+                .orderId(request.getOrderId())
+                .orderItemId(request.getOrderItemId())
+                .orderCode(request.getOrderCode())
+                .trayNumber(request.getEffectiveTrayNumber())
+                .prescriptionId(prescription != null ? prescription.getId() : prescriptionId)
+                .customerName(resolvedCustomerName)
+                .sku(sku)
+                .frameSku(request.getFrameSku())
+                .frameName(request.getFrameName())
+                .lensSku(request.getLensSku() != null ? request.getLensSku() : sku)
+                .lensName(request.getLensName())
+                .technicianId(request.getTechnicianId())
+                .technicianName(request.getTechnicianName())
+                .technicianNotes(request.getTechnicianNotes())
+                .status(LabJobStatus.CREATED)
+                .build();
+
+        LabJob saved = labJobRepository.save(job);
+        recordStatus(saved, null, LabJobStatus.CREATED.name(), request.getTechnicianName(), "Tạo lệnh gia công từ đơn hàng POS");
+        log.info("Created lab job {} for order {} (idempotencyKey: {}, code: {}, tray: {})",
+                saved.getId(), saved.getOrderId(), saved.getIdempotencyKey(), saved.getOrderCode(), saved.getTrayNumber());
+
+        LabJobResponse response = LabJobResponse.from(saved, prescription);
+        if (prescription == null && response != null) {
+            if (request.getEffectiveOdSphere() != null) response.setOdSphere(request.getEffectiveOdSphere());
+            if (request.getEffectiveOdCyl() != null) response.setOdCyl(request.getEffectiveOdCyl());
+            if (request.getEffectiveOdAxis() != null) response.setOdAxis(request.getEffectiveOdAxis());
+            if (request.getEffectiveOdAdd() != null) response.setOdAdd(request.getEffectiveOdAdd());
+            if (request.getEffectiveOsSphere() != null) response.setOsSphere(request.getEffectiveOsSphere());
+            if (request.getEffectiveOsCyl() != null) response.setOsCyl(request.getEffectiveOsCyl());
+            if (request.getEffectiveOsAxis() != null) response.setOsAxis(request.getEffectiveOsAxis());
+            if (request.getEffectiveOsAdd() != null) response.setOsAdd(request.getEffectiveOsAdd());
+            if (request.getEffectivePd() != null) response.setPd(request.getEffectivePd());
+        }
+        return response;
     }
 
     @Override
@@ -96,96 +189,51 @@ public class LabJobServiceImpl implements LabJobService {
             String lensSku,
             String lensName,
             String technicianName) {
-        return createFromOrder(
-                orderId, prescriptionId, frameSku, frameName, lensSku, lensName,
-                technicianName, null, null, null);
-    }
-
-    private LabJobResponse createFromOrder(
-            Long orderId,
-            Long prescriptionId,
-            String frameSku,
-            String frameName,
-            String lensSku,
-            String lensName,
-            String technicianName,
-            Long technicianId,
-            String technicianNotes,
-            String customerName) {
-        if (orderId == null) {
-            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Thiếu mã đơn hàng để tạo lệnh gia công");
-        }
-        if (prescriptionId == null) {
-            throw ApiException.of(ErrorCode.PRESCRIPTION_INCOMPLETE,
-                    "Thiếu toa kính đã xác nhận để tạo lệnh gia công");
-        }
-
-        var existing = labJobRepository.findByOrderId(orderId);
-        if (existing.isPresent()) {
-            return getResponse(existing.get());
-        }
-
-        Prescription prescription = prescriptionRepository.findById(prescriptionId)
-                .orElseThrow(() -> ApiException.of(ErrorCode.PRESCRIPTION_NOT_FOUND,
-                        "Không tìm thấy toa kính ID: " + prescriptionId));
-        requireCompletePrescription(prescription);
-
-        String resolvedCustomerName = customerName == null || customerName.isBlank()
-                ? prescription.getCustomerName()
-                : customerName;
-        LabJob job = LabJob.builder()
+        CreateLabJobRequest req = CreateLabJobRequest.builder()
                 .orderId(orderId)
                 .prescriptionId(prescriptionId)
-                .customerName(resolvedCustomerName)
                 .frameSku(frameSku)
                 .frameName(frameName)
                 .lensSku(lensSku)
                 .lensName(lensName)
-                .technicianId(technicianId)
                 .technicianName(technicianName)
-                .technicianNotes(technicianNotes)
-                .status(com.glassstore.lab.entity.LabJobStatus.PENDING)
                 .build();
-
-        LabJob saved = labJobRepository.save(job);
-        recordStatus(saved, null, saved.getStatus().name(), technicianName, "Tạo lệnh gia công từ đơn hàng");
-        log.info("Created lab job {} for order {} using prescription {}",
-                saved.getId(), orderId, prescriptionId);
-        return LabJobResponse.from(saved, prescription);
+        return createLabJob(req);
     }
 
     @Override
     @Transactional
     public LabJobResponse updateJobStatus(Long id, UpdateJobStatusRequest request) {
         LabJob job = findJob(id);
-        com.glassstore.lab.entity.LabJobStatus requestedStatus = request.getStatus();
+        LabJobStatus requestedStatus = request.getStatus();
         if (requestedStatus == null) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Trạng thái cập nhật không được để trống");
         }
 
-        LabJobStatus current = toWorkflowStatus(job.getStatus());
-        LabJobStatus target = toWorkflowStatus(requestedStatus);
-        if (current == target || !current.canTransitionTo(target)) {
+        LabJobStatus current = job.getStatus();
+        // Kiểm tra State Machine: CREATED -> QUEUED -> IN_PROGRESS -> QC_PASSED / QC_FAILED -> COMPLETED / CANCELLED
+        if (current == requestedStatus || !current.canTransitionTo(requestedStatus)) {
             throw ApiException.of(ErrorCode.LAB_JOB_INVALID_TRANSITION,
-                    "Không thể chuyển lệnh gia công từ " + job.getStatus() + " sang " + requestedStatus);
+                    "Không thể chuyển lệnh gia công từ " + current + " sang " + requestedStatus);
         }
 
         String qcNotes = request.getEffectiveQcNotes();
-        if ((target.requiresReasonToEnter()) && (qcNotes == null || qcNotes.isBlank())) {
+        if (requestedStatus == LabJobStatus.QC_FAILED && (qcNotes == null || qcNotes.isBlank())) {
             throw ApiException.of(ErrorCode.LAB_JOB_QC_REASON_REQUIRED,
-                    "Phải ghi rõ lý do khi đánh giá QC không đạt hoặc hủy lệnh");
+                    "Phải ghi rõ lý do khi đánh giá QC không đạt");
         }
 
         LocalDateTime now = LocalDateTime.now();
-        if (requestedStatus == com.glassstore.lab.entity.LabJobStatus.IN_PROGRESS) {
+        if (requestedStatus == LabJobStatus.IN_PROGRESS) {
             job.setStartedAt(now);
             String technicianNotes = request.getEffectiveTechnicianNotes();
             if (technicianNotes != null) {
                 job.setTechnicianNotes(technicianNotes);
             }
         }
-        if (requestedStatus == com.glassstore.lab.entity.LabJobStatus.QC_PASSED
-                || requestedStatus == com.glassstore.lab.entity.LabJobStatus.DELIVERED) {
+        if (requestedStatus == LabJobStatus.QC_PASSED
+                || requestedStatus == LabJobStatus.COMPLETED
+                || requestedStatus == LabJobStatus.DELIVERED) {
             job.setCompletedAt(now);
         }
         if (qcNotes != null) {
@@ -201,7 +249,7 @@ public class LabJobServiceImpl implements LabJobService {
         job.setUpdatedAt(now);
 
         LabJob saved = labJobRepository.save(job);
-        recordStatus(saved, current.name(), target.name(), request.getTechnicianName(), qcNotes);
+        recordStatus(saved, current.name(), requestedStatus.name(), request.getTechnicianName(), qcNotes != null ? qcNotes : request.getNotes());
         return getResponse(saved);
     }
 
@@ -220,27 +268,23 @@ public class LabJobServiceImpl implements LabJobService {
 
     private void recordStatus(
             LabJob job, String fromStatus, String toStatus, String actor, String reason) {
-        historyRepository.save(LabJobStatusHistory.builder()
+        historyRepository.save(LabJobHistory.builder()
                 .labJobId(job.getId())
                 .fromStatus(fromStatus)
                 .toStatus(toStatus)
-                .actor(actor)
-                .reason(reason)
+                .changedBy(actor == null || actor.isBlank() ? "SYSTEM" : actor)
+                .note(reason)
+                .changedAt(LocalDateTime.now())
                 .build());
     }
 
-    private LabJobStatus toWorkflowStatus(com.glassstore.lab.entity.LabJobStatus status) {
-        return switch (status) {
-            case PENDING -> LabJobStatus.WAITING_PROCESS;
-            case QC_PENDING -> LabJobStatus.QC_CHECK;
-            default -> LabJobStatus.valueOf(status.name());
-        };
-    }
-
     private void requireCompletePrescription(Prescription prescription) {
-        if (prescription.getOdSph() == null || prescription.getOsSph() == null || prescription.getPd() == null) {
-            throw ApiException.of(ErrorCode.PRESCRIPTION_INCOMPLETE,
-                    "Toa kính thiếu SPH hoặc PD bắt buộc, không thể đưa vào gia công");
+        if (prescription.getOdSph() == null || prescription.getOsSph() == null
+                || prescription.getOdCyl() == null || prescription.getOsCyl() == null
+                || prescription.getOdAxis() == null || prescription.getOsAxis() == null
+                || prescription.getPd() == null) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR,
+                    "Toa kính thiếu thông số đo bắt buộc (SPH, CYL, AXIS, PD)");
         }
         validateAxis(prescription.getOdAxis(), "OD");
         validateAxis(prescription.getOsAxis(), "OS");

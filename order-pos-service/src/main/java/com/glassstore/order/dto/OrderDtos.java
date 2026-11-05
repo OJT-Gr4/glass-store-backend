@@ -30,6 +30,7 @@ public final class OrderDtos {
          * Price the client believes it is paying. Used only to detect a change and ask the
          * customer to confirm (EX-ORD-02); it is never used as the charged amount.
          */
+        @com.fasterxml.jackson.annotation.JsonAlias("unitPrice")
         private BigDecimal expectedUnitPrice;
         private String productName;
         private Long prescriptionId;

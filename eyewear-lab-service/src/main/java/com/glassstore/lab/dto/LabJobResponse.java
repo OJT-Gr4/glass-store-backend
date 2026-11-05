@@ -20,9 +20,14 @@ import java.time.LocalDateTime;
 public class LabJobResponse {
 
     private Long id;
+    private String idempotencyKey;
     private Long orderId;
+    private Long orderItemId;
+    private String orderCode;
+    private String trayNumber;
     private Long prescriptionId;
     private String customerName;
+    private String sku;
     private String lensSku;
     private String lensName;
     private String frameSku;
@@ -69,9 +74,14 @@ public class LabJobResponse {
 
         LabJobResponseBuilder builder = LabJobResponse.builder()
                 .id(job.getId())
+                .idempotencyKey(job.getIdempotencyKey())
                 .orderId(job.getOrderId())
+                .orderItemId(job.getOrderItemId())
+                .orderCode(job.getOrderCode())
+                .trayNumber(job.getTrayNumber())
                 .prescriptionId(job.getPrescriptionId())
                 .customerName(job.getCustomerName())
+                .sku(job.getSku())
                 .lensSku(job.getLensSku())
                 .lensName(job.getLensName())
                 .frameSku(job.getFrameSku())
@@ -107,4 +117,3 @@ public class LabJobResponse {
         return builder.build();
     }
 }
-

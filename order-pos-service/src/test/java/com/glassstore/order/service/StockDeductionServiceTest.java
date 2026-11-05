@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -38,6 +39,31 @@ class StockDeductionServiceTest {
         assertEquals("BRANCH_01", order.getBranchCode());
         verifyNoInteractions(catalogInventoryClient, eventPublisher, paymentRepository);
         verify(outboxRepository, never()).save(any());
+    }
+
+    @Test
+    void manualRetryRequeuesAnEventNeedingReconciliation() {
+        Order order = Order.builder()
+                .id(91L)
+                .channel(SalesChannel.POS)
+                .status(OrderStatus.PAID)
+                .branchCode("BRANCH_01")
+                .build();
+        StockDeductionOutbox outbox = StockDeductionOutbox.builder()
+                .id(8L)
+                .orderId(91L)
+                .status("RECONCILIATION_REQUIRED")
+                .lastError("previous attempts exhausted")
+                .build();
+        when(orderRepository.lockById(91L)).thenReturn(Optional.of(order));
+        when(outboxRepository.findByOrderId(91L)).thenReturn(Optional.of(outbox));
+
+        stockDeductionService.retry(91L, null);
+
+        assertEquals("PENDING", outbox.getStatus());
+        assertNull(outbox.getLastError());
+        verify(outboxRepository).save(outbox);
+        verify(eventPublisher).publishEvent(any(StockDeductionRequestedEvent.class));
     }
 
     @Mock
@@ -60,5 +86,18 @@ class StockDeductionServiceTest {
         when(worker.process(7L)).thenReturn("SYNCED");
         stockDeductionService.processAfterCommit(new StockDeductionRequestedEvent(7L,order));
         assertEquals("SYNCED",order.getInventorySyncStatus());verify(worker).process(7L);
+    }
+
+    @Test
+    void processingFailureIsPersistedForRetryOrReconciliation() {
+        Order order = Order.builder().id(43L).status(OrderStatus.PAID).build();
+        IllegalStateException failure = new IllegalStateException("unexpected worker failure");
+        when(worker.process(9L)).thenThrow(failure);
+        when(worker.recordProcessingFailure(9L, failure)).thenReturn("RECONCILIATION_REQUIRED");
+
+        stockDeductionService.processAfterCommit(new StockDeductionRequestedEvent(9L, order));
+
+        assertEquals("RECONCILIATION_REQUIRED", order.getInventorySyncStatus());
+        verify(worker).recordProcessingFailure(9L, failure);
     }
 }

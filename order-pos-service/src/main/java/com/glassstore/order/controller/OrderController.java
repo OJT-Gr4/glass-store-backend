@@ -246,6 +246,14 @@ public class OrderController {
                 stockDeductionService.retry(id, body == null ? null : body.get("branchCode"))));
     }
 
+    /** Dispatch lệnh gia công mài kính sang Lab cho đơn hàng. */
+    @PostMapping("/{id}/dispatch-lab")
+    public ResponseEntity<ApiResponse<Order>> dispatchLabJob(@PathVariable("id") Long id) {
+        Order order = requireOrder(id);
+        Order updated = checkoutService.dispatchLabJob(order);
+        return ResponseEntity.ok(ApiResponse.success("Gửi lệnh mài kính sang Lab thành công", updated));
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, String>> businessError(ResponseStatusException error) {
         return ResponseEntity.status(error.getStatusCode()).body(Map.of("message",

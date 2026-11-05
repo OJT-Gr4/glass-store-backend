@@ -29,20 +29,48 @@ public class PromotionService {
         data.actor(token, false);
         if (order.getItems() == null || order.getItems().isEmpty()) throw invalid("Giỏ hàng đang trống.");
         if (order.getCustomerId() != null) data.customer(token, order.getCustomerId());
-        Map<String, BigDecimal> prices = data.catalogPrices();
+        Map<String, PosDataService.CatalogItem> catalog = data.catalogItems();
+        Set<Long> prescriptions = new HashSet<>();
+        if (order.getPrescriptionId() != null) prescriptions.add(order.getPrescriptionId());
+        for (OrderItem item : order.getItems()) if (item != null && item.getPrescriptionId() != null) prescriptions.add(item.getPrescriptionId());
+        if (prescriptions.size() > 1) throw invalid("Mỗi đơn POS chỉ được liên kết một toa kính.");
+        Long prescriptionId = prescriptions.stream().findFirst().orElse(null);
+        if (prescriptionId != null) data.requirePrescription(prescriptionId, order.getCustomerId(), token);
+        if (consumeLocks && order.getOrderType() != null && order.getOrderType().requiresPrescription() && prescriptionId == null)
+            throw invalid("Đơn kính thuốc cần liên kết toa kính của khách.");
+        boolean hasPrescriptionLens = false;
         BigDecimal subtotal = BigDecimal.ZERO;
         for (OrderItem item : order.getItems()) {
-            if (item == null || item.getQuantity() == null || item.getQuantity() < 1 || item.getQuantity() > 10000 || !prices.containsKey(item.getSkuId())) throw invalid("SKU hoặc số lượng không hợp lệ.");
-            BigDecimal price = prices.get(item.getSkuId());
+            if (item == null || item.getQuantity() == null || item.getQuantity() < 1 || item.getQuantity() > 10000 || !catalog.containsKey(item.getSkuId())) throw invalid("SKU hoặc số lượng không hợp lệ.");
+            PosDataService.CatalogItem product = catalog.get(item.getSkuId());
+            if (!product.sellable()) throw invalid("Sản phẩm " + item.getSkuId() + " hiện không được bán.");
+            BigDecimal price = product.price();
             if (price.signum() < 0) throw invalid("Đơn giá không hợp lệ.");
+            BigDecimal expected = item.getExpectedUnitPrice() != null ? item.getExpectedUnitPrice() : item.getUnitPrice();
+            if (consumeLocks && (expected == null || expected.compareTo(price) != 0))
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Giá SKU " + item.getSkuId() + " đã thay đổi hoặc không hợp lệ. Tải lại giá và xác nhận trước khi thanh toán.");
+            if (item.getPrescriptionId() != null && !"LENS".equals(product.productType()))
+                throw invalid("Chỉ dòng tròng kính cần gia công được gắn toa kính.");
+            if (prescriptionId != null && "LENS".equals(product.productType())) {
+                item.setPrescriptionId(prescriptionId);
+                hasPrescriptionLens = true;
+            }
+            item.setProductName(product.name());
             item.setUnitPrice(price); item.setSubtotal(price.multiply(BigDecimal.valueOf(item.getQuantity())));
             subtotal = subtotal.add(item.getSubtotal());
         }
+        if (prescriptionId != null && !hasPrescriptionLens) throw invalid("Đơn có toa kính phải có dòng tròng kính cần gia công.");
+        order.setPrescriptionId(prescriptionId);
         String code = order.getVoucherCode() == null ? "" : order.getVoucherCode().trim().toUpperCase(Locale.ROOT);
         Voucher voucher = null;
         BigDecimal voucherDiscount = BigDecimal.ZERO;
         if (!code.isEmpty()) {
             voucher = (consumeLocks ? vouchers.lockByCode(code) : vouchers.findByCode(code)).orElseThrow(() -> invalid("Mã voucher không tồn tại."));
+            if (voucher.getAmount() == null || voucher.getAmount().signum() <= 0
+                    || "PERCENT".equals(voucher.getType()) && voucher.getAmount().compareTo(new BigDecimal("100")) > 0
+                    || voucher.getMinimumAmount().signum() < 0
+                    || voucher.getMaximumDiscount() != null && voucher.getMaximumDiscount().signum() < 0)
+                throw invalid("Cấu hình voucher không hợp lệ, vui lòng liên hệ quản lý.");
             LocalDateTime now = LocalDateTime.now();
             if (voucher.getChannel() != null && !Set.of("ALL", "POS").contains(voucher.getChannel().toUpperCase(Locale.ROOT))) throw invalid("Voucher không áp dụng tại quầy POS.");
             if (!voucher.isActive() || voucher.getStartsAt() != null && now.isBefore(voucher.getStartsAt()) || voucher.getExpiresAt() != null && !now.isBefore(voucher.getExpiresAt())) throw invalid("Voucher chưa có hiệu lực hoặc đã hết hạn.");

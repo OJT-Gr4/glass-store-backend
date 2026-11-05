@@ -11,10 +11,14 @@ import java.time.LocalDateTime;
 /**
  * One payment attempt against an order.
  *
- * <p>Rows are never mutated to erase history: a failed attempt stays FAILED and a new row is
+ * <p>
+ * Rows are never mutated to erase history: a failed attempt stays FAILED and a
+ * new row is
  * created for the retry. The unique index on
- * {@code (provider, external_transaction_id)} makes a duplicated gateway callback a no-op
- * instead of a second successful charge (BR-15, EX-PAY-03).</p>
+ * {@code (provider, external_transaction_id)} makes a duplicated gateway
+ * callback a no-op
+ * instead of a second successful charge (BR-15, EX-PAY-03).
+ * </p>
  */
 @Entity
 @Table(name = "payments", indexes = {
@@ -55,7 +59,9 @@ public class Payment {
     @Column(name = "provider", length = 40)
     private String provider;
 
-    /** Gateway's own transaction id; the idempotency key for callbacks (FR-PAY-06). */
+    /**
+     * Gateway's own transaction id; the idempotency key for callbacks (FR-PAY-06).
+     */
     @Column(name = "external_transaction_id", length = 120)
     private String externalTransactionId;
 
@@ -69,11 +75,11 @@ public class Payment {
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "datetime(6)")
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    @Column(name = "updated_at", nullable = false)
+    @Column(name = "updated_at", nullable = false, columnDefinition = "datetime(6)")
     @Builder.Default
     private LocalDateTime updatedAt = LocalDateTime.now();
 }

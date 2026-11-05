@@ -153,7 +153,7 @@ Tất cả các REST Controller trả về theo format `ApiResponse<T>`:
 ```
 
 ### 6.2. Giao tiếp OpenFeign giữa các Service
-- Khi POS thanh toán thành công, `order-pos-service` ghi một sự kiện trừ kho vào outbox cùng giao dịch đơn hàng/thanh toán, sau đó gọi `catalog-service` qua OpenFeign. Sự kiện lỗi mạng được giữ lại và tự thử lại; idempotency key và mã đơn ngăn trừ lặp.
+- Khi POS thanh toán thành công, `order-pos-service` ghi một sự kiện trừ kho vào outbox cùng giao dịch đơn hàng/thanh toán, sau đó gọi `catalog-service` qua OpenFeign. Catalog trừ có điều kiện theo SKU và chi nhánh, ghi lịch sử trong cùng transaction; unique order/idempotency keys và kiểm tra lịch sử khiến request lặp chỉ được replay, không trừ lại. Lỗi kỹ thuật được retry tối đa 10 lần; lỗi nghiệp vụ ở trạng thái `FAILED`, còn lỗi kỹ thuật quá giới hạn chuyển `RECONCILIATION_REQUIRED` để đối soát hoặc retry thủ công.
 - Khi đơn hàng kính thuốc được thanh toán thành công, `order-pos-service` gọi sang `eyewear-lab-service` qua OpenFeign (`POST /api/lab-jobs`) để khởi tạo lệnh gia công mài lắp kính cho xưởng Lab.
 
 ---

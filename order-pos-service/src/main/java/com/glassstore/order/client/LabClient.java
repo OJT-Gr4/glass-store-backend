@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 /** Creates lens fabrication jobs in eyewear-lab-service (FR-POS-16). */
-@FeignClient(name = "eyewear-lab-service", url = "${services.eyewear-lab-service.url}")
+@FeignClient(name = "eyewear-lab-service", contextId = "labClient", url = "${services.eyewear-lab-service.url}")
 public interface LabClient {
 
     @PostMapping("/api/lab-jobs/from-order")

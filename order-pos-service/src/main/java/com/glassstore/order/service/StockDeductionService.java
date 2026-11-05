@@ -89,6 +89,14 @@ public class StockDeductionService {
 
     private String processOutbox(Long id) {
         try { return worker.process(id); }
-        catch (RuntimeException error) { log.error("Inventory task {} will be retried", id, error); return "PENDING"; }
+        catch (RuntimeException error) {
+            log.error("Inventory task {} failed before its outcome was recorded", id, error);
+            try {
+                return worker.recordProcessingFailure(id, error);
+            } catch (RuntimeException persistenceError) {
+                log.error("Inventory task {} failure could not be persisted", id, persistenceError);
+                return "PENDING";
+            }
+        }
     }
 }

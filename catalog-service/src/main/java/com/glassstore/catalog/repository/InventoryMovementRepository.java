@@ -9,6 +9,9 @@ import org.springframework.data.repository.query.Param;
 
 public interface InventoryMovementRepository extends JpaRepository<InventoryMovement, Long> {
 
+    java.util.List<InventoryMovement> findAllByReferenceTypeAndReferenceId(
+            String referenceType, String referenceId);
+
     @Query("""
             select movement from InventoryMovement movement
             where (:sku is null or movement.sku = :sku)

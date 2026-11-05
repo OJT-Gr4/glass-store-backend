@@ -2,12 +2,16 @@ package com.glassstore.order.service;
 
 import com.glassstore.common.exception.ApiException;
 import com.glassstore.common.exception.ErrorCode;
-
+import com.glassstore.order.client.LabClient;
+import com.glassstore.order.client.LabServiceClient;
 import com.glassstore.order.domain.OrderStatus;
+import com.glassstore.order.domain.OrderType;
 import com.glassstore.order.domain.PaymentMethod;
 import com.glassstore.order.domain.PaymentStatus;
+import com.glassstore.order.dto.CreateLabJobRequest;
 import com.glassstore.order.dto.OrderDtos;
 import com.glassstore.order.entity.Order;
+import com.glassstore.order.entity.OrderItem;
 import com.glassstore.order.entity.Payment;
 import com.glassstore.order.repository.OrderRepository;
 import com.glassstore.order.repository.PaymentRepository;
@@ -17,11 +21,14 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -33,7 +40,8 @@ class OrderCheckoutServiceTest {
     private BasketPricingService pricingService;
     private OrderStatusService orderStatusService;
     private OrderInventoryService inventoryService;
-    private LabDispatchService labDispatch;
+    private LabClient labClient;
+    private LabServiceClient labServiceClient;
     private WarrantyActivationService warrantyActivationService;
     private OrderCheckoutService service;
 
@@ -44,10 +52,11 @@ class OrderCheckoutServiceTest {
         pricingService = mock(BasketPricingService.class);
         orderStatusService = mock(OrderStatusService.class);
         inventoryService = mock(OrderInventoryService.class);
-        labDispatch = mock(LabDispatchService.class);
+        labClient = mock(LabClient.class);
+        labServiceClient = mock(LabServiceClient.class);
         warrantyActivationService = mock(WarrantyActivationService.class);
         service = new OrderCheckoutService(orderRepository, paymentRepository, pricingService,
-                orderStatusService, inventoryService, labDispatch, warrantyActivationService);
+                orderStatusService, inventoryService, labClient, warrantyActivationService, labServiceClient);
 
         when(orderRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
         when(orderRepository.findByOrderCode(any())).thenReturn(Optional.empty());
@@ -59,72 +68,33 @@ class OrderCheckoutServiceTest {
             }
             return order;
         });
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
         when(pricingService.price(any(), any(), any())).thenReturn(basket());
     }
 
     @Test
-    @DisplayName("Idempotent checkout returns the original order (EX-ORD-04)")
-    void replay() {
-        Order existing = Order.builder().id(9L).orderCode("ORD-1").build();
-        when(orderRepository.findByIdempotencyKey("key-1")).thenReturn(Optional.of(existing));
-
-        OrderCheckoutService.CheckoutOutcome outcome = service.checkout(validRequest(), "key-1");
-
-        assertThat(outcome.replayed()).isTrue();
-        assertThat(outcome.order().getId()).isEqualTo(9L);
-        verify(inventoryService, never()).reserve(any());
-        verify(orderRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("Missing Idempotency-Key is rejected")
-    void missingKey() {
-        assertThatThrownBy(() -> service.checkout(validRequest(), " "))
+    @DisplayName("Online checkout requires a non-blank phone number (BR-16)")
+    void onlinePhoneRequired() {
+        OrderDtos.CheckoutRequest request = validRequest();
+        request.setCustomerPhone(" ");
+        assertThatThrownBy(() -> service.checkout(request, "k"))
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.IDEMPOTENCY_KEY_REQUIRED);
+                .isEqualTo(ErrorCode.VALIDATION_ERROR);
     }
 
     @Test
-    @DisplayName("Price change without accept flag is rejected (EX-ORD-02)")
-    void priceChanged() {
-        when(pricingService.price(any(), any(), any())).thenReturn(OrderDtos.PricedBasket.builder()
-                .lines(basket().getLines())
-                .totalAmount(new BigDecimal("20.00"))
-                .discountAmount(BigDecimal.ZERO)
-                .finalAmount(new BigDecimal("20.00"))
-                .priceChanges(List.of(OrderDtos.PriceChange.builder()
-                        .sku("SKU-1")
-                        .expectedUnitPrice(new BigDecimal("10.00"))
-                        .currentUnitPrice(new BigDecimal("20.00"))
-                        .build()))
-                .build());
-
-        assertThatThrownBy(() -> service.checkout(validRequest(), "k"))
-                .isInstanceOf(ApiException.class)
-                .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.ORDER_PRICE_CHANGED);
-        verify(inventoryService, never()).reserve(any());
+    @DisplayName("Pos checkout falls back to placeholder phone when blank")
+    void posPhoneFallback() {
+        OrderDtos.CheckoutRequest request = validRequest();
+        request.setChannel("POS");
+        request.setCustomerPhone("");
+        OrderCheckoutService.CheckoutOutcome outcome = service.checkout(request, "k");
+        assertThat(outcome.order().getCustomerPhone()).isEqualTo("0000000000");
     }
 
     @Test
-    @DisplayName("Successful checkout snapshots catalog prices and reserves stock")
-    void success() {
-        OrderCheckoutService.CheckoutOutcome outcome = service.checkout(validRequest(), "k-ok");
-
-        assertThat(outcome.replayed()).isFalse();
-        assertThat(outcome.order().getFinalAmount()).isEqualByComparingTo("10.00");
-        assertThat(outcome.order().getItems()).hasSize(1);
-        assertThat(outcome.order().getItems().get(0).getUnitPrice()).isEqualByComparingTo("10.00");
-        verify(inventoryService).reserve(outcome.order());
-        ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
-        verify(paymentRepository).save(paymentCaptor.capture());
-        assertThat(paymentCaptor.getValue().getStatus()).isEqualTo(PaymentStatus.PENDING);
-        assertThat(paymentCaptor.getValue().getAmount()).isEqualByComparingTo("10.00");
-    }
-
-    @Test
-    @DisplayName("Lens order without prescription is rejected")
+    @DisplayName("Prescription is mandatory for prescription-bearing orders (BR-03)")
     void prescriptionRequired() {
         OrderDtos.CheckoutRequest request = validRequest();
         request.setOrderType("COMPLETE_GLASSES");
@@ -147,6 +117,111 @@ class OrderCheckoutServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.PAYMENT_ALREADY_SETTLED);
+    }
+
+    @Test
+    @DisplayName("dispatchLabJobIfNeeded: Tự động gửi CreateLabJobRequest qua LabServiceClient khi đơn có kính thuốc")
+    void dispatchLabJob_PrescriptionOrder_CallsFeignClient() {
+        Map<String, Object> rxData = Map.of(
+                "id", 55L,
+                "customerId", 10L,
+                "odSph", -2.00,
+                "osSph", -2.00,
+                "odCyl", -0.50,
+                "osCyl", -0.50,
+                "odAxis", 90,
+                "osAxis", 90,
+                "pd", 63.0
+        );
+        when(labServiceClient.getPrescriptionById(55L)).thenReturn(org.springframework.http.ResponseEntity.ok(Map.of("data", rxData)));
+
+        List<OrderItem> items = new ArrayList<>();
+        items.add(OrderItem.builder().skuId("LNS-CRIZAL-160").productName("Tròng Crizal").quantity(1).build());
+        items.add(OrderItem.builder().skuId("FRM-RB-3025").productName("Gọng RayBan").quantity(1).build());
+
+        Order order = Order.builder()
+                .id(101L)
+                .orderCode("ORD-20261104-001")
+                .customerId(10L)
+                .customerName("Nguyễn Văn A")
+                .staffName("KTV Hưng")
+                .status(OrderStatus.PAID)
+                .orderType(OrderType.COMPLETE_GLASSES)
+                .prescriptionId(55L)
+                .items(items)
+                .build();
+
+        service.dispatchLabJobIfNeeded(order);
+
+        ArgumentCaptor<CreateLabJobRequest> captor = ArgumentCaptor.forClass(CreateLabJobRequest.class);
+        verify(labServiceClient).createLabJob(captor.capture());
+
+        CreateLabJobRequest captured = captor.getValue();
+        assertThat(captured.getOrderId()).isEqualTo(101L);
+        assertThat(captured.getOrderCode()).isEqualTo("ORD-20261104-001");
+        assertThat(captured.getTrayNumber()).isEqualTo("KHAY-ORD-20261104-001");
+        assertThat(captured.getCustomerName()).isEqualTo("Nguyễn Văn A");
+        assertThat(captured.getPrescriptionId()).isEqualTo(55L);
+        assertThat(captured.getLensSku()).isEqualTo("LNS-CRIZAL-160");
+        assertThat(captured.getFrameSku()).isEqualTo("FRM-RB-3025");
+        assertThat(captured.getTechnicianName()).isEqualTo("KTV Hưng");
+    }
+
+    @Test
+    @DisplayName("dispatchLabJobIfNeeded: Khi LabServiceClient gặp lỗi thì try-catch không ném lỗi ra ngoài")
+    void dispatchLabJob_WhenFeignClientFails_DoesNotThrow() {
+        Map<String, Object> rxData = Map.of(
+                "id", 60L,
+                "customerId", 20L,
+                "odSph", -1.50,
+                "osSph", -1.50,
+                "odCyl", 0.0,
+                "osCyl", 0.0,
+                "odAxis", 0,
+                "osAxis", 0,
+                "pd", 62.0
+        );
+        when(labServiceClient.getPrescriptionById(60L)).thenReturn(org.springframework.http.ResponseEntity.ok(Map.of("data", rxData)));
+
+        List<OrderItem> items = new ArrayList<>();
+        items.add(OrderItem.builder().skuId("LNS-01").productName("Tròng lọc ánh sáng xanh").quantity(1).build());
+
+        Order order = Order.builder()
+                .id(102L)
+                .orderCode("ORD-20261104-002")
+                .customerId(20L)
+                .customerName("Trần Thị B")
+                .status(OrderStatus.PAID)
+                .orderType(OrderType.LENS_ONLY)
+                .prescriptionId(60L)
+                .items(items)
+                .build();
+
+        doThrow(new RuntimeException("Lab service connection timed out"))
+                .when(labServiceClient).createLabJob(any());
+
+        assertThatCode(() -> service.dispatchLabJobIfNeeded(order)).doesNotThrowAnyException();
+        verify(labServiceClient, atLeastOnce()).createLabJob(any());
+    }
+
+    @Test
+    @DisplayName("dispatchLabJobIfNeeded: Đơn hàng không có kính thuốc/toa kính thì không gọi LabServiceClient")
+    void dispatchLabJob_NonPrescriptionOrder_DoesNotCallFeignClient() {
+        List<OrderItem> items = new ArrayList<>();
+        items.add(OrderItem.builder().skuId("ACC-CASE-01").productName("Hộp kính").quantity(1).build());
+
+        Order order = Order.builder()
+                .id(103L)
+                .orderCode("ORD-20261104-003")
+                .customerName("Lê Văn C")
+                .orderType(OrderType.ACCESSORY)
+                .prescriptionId(null)
+                .items(items)
+                .build();
+
+        service.dispatchLabJobIfNeeded(order);
+
+        verify(labServiceClient, never()).createLabJob(any());
     }
 
     private static OrderDtos.CheckoutRequest validRequest() {

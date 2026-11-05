@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +44,7 @@ public class InventoryService {
     private final InventoryDeductionRepository deductionRepository;
     private final StockTransferRepository transferRepository;
     private final ProductVariantRepository variantRepository;
+    private final PaidOrderStockDeductionService paidOrderStockDeductionService;
 
     @Transactional(readOnly = true)
     public List<InventoryLocationDTO> getLocations() {
@@ -269,63 +271,13 @@ public class InventoryService {
                 .build();
     }
 
-    @Transactional
     public StockDeductionResponse deductPaidOrder(StockDeductionRequest request) {
-        String locationCode = resolveLocationCode(request.getBranchName());
-        TreeMap<String, Integer> quantitiesBySku = new TreeMap<>();
-        for (StockDeductionRequest.Item item : request.getItems()) {
-            quantitiesBySku.merge(item.getSku().trim(), item.getQuantity(), Integer::sum);
+        try {
+            return paidOrderStockDeductionService.deduct(request);
+        } catch (DataIntegrityViolationException duplicateClaim) {
+            return paidOrderStockDeductionService.replayIfAlreadyProcessed(request)
+                    .orElseThrow(() -> duplicateClaim);
         }
-
-        Optional<InventoryDeduction> previous = deductionRepository.findByOrderId(request.getOrderId())
-                .or(() -> deductionRepository.findByIdempotencyKey(request.getIdempotencyKey()));
-        if (previous.isPresent()) {
-            InventoryDeduction deduction = previous.get();
-            if (Boolean.TRUE.equals(deduction.getCancelled())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Đơn đã hủy, không được trừ kho lại.");
-            if (!deduction.getOrderId().equals(request.getOrderId())
-                    || !deduction.getIdempotencyKey().equals(request.getIdempotencyKey())
-                    || !deduction.getTransactionCode().equals(request.getTransactionCode())
-                    || !deduction.getLocationCode().equals(locationCode)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Idempotency key or order was already used for a different payment.");
-            }
-            return new StockDeductionResponse(request.getOrderId(), locationCode, true);
-        }
-
-        for (String sku : quantitiesBySku.keySet()) {
-            if (!variantRepository.existsBySku(sku)) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy SKU " + sku + ".");
-            }
-            if (balanceRepository.findBySkuAndLocationCode(sku, locationCode).isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "SKU " + sku + " chưa được cấu hình tồn tại địa điểm " + locationCode + ".");
-            }
-        }
-
-        deductionRepository.saveAndFlush(InventoryDeduction.builder()
-                .orderId(request.getOrderId())
-                .idempotencyKey(request.getIdempotencyKey())
-                .transactionCode(request.getTransactionCode())
-                .locationCode(locationCode)
-                .build());
-
-        for (Map.Entry<String, Integer> entry : quantitiesBySku.entrySet()) {
-            String sku = entry.getKey();
-            int quantity = entry.getValue();
-            int balanceUpdated = balanceRepository.decrementIfAvailable(sku, locationCode, quantity);
-            int productUpdated = variantRepository.decrementStockIfAvailable(sku, quantity);
-            if (balanceUpdated != 1 || productUpdated != 1) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Không đủ tồn khả dụng cho SKU " + sku + " tại " + locationCode + ".");
-            }
-            movementRepository.save(InventoryMovement.builder()
-                    .movementType("SALE")
-                    .sku(sku)
-                    .sourceLocationCode(locationCode)
-                    .referenceType("PAYMENT")
-                    .referenceId(request.getTransactionCode())
-                    .quantity(quantity)
-                    .performedBy("ORDER_SERVICE")
-                    .build());
-        }
-        return new StockDeductionResponse(request.getOrderId(), locationCode, false);
     }
 
     @Transactional
@@ -348,28 +300,6 @@ public class InventoryService {
                     .referenceId(request.getOrderId().toString()).quantity(item.getValue()).performedBy("ORDER_SERVICE").build());
         }
         deduction.setCancelled(true); deductionRepository.save(deduction);
-    }
-
-    private String resolveLocationCode(String branchName) {
-        String normalized = Normalizer.normalize(branchName.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "")
-                .replace('đ', 'd')
-                .replaceAll("[^a-z0-9]+", " ")
-                .trim();
-        if (normalized.contains("lab") || normalized.contains("tong kho")) {
-            return LAB;
-        }
-        if (normalized.contains("branch 01") || normalized.contains("chi nhanh 01")
-                || normalized.contains("cn 01") || normalized.contains("flagship")
-                || normalized.contains("le thanh ton")) {
-            return BRANCH_01;
-        }
-        if (normalized.contains("branch 02") || normalized.contains("chi nhanh 02")
-                || normalized.contains("cn 02") || normalized.contains("hai ba trung")
-                || normalized.contains("trang tien")) {
-            return BRANCH_02;
-        }
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không xác định được kho bán hàng từ tên chi nhánh.");
     }
 
     private List<StockTransferItem> sortedItems(List<StockTransferItem> items) {

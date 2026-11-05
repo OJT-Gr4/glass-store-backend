@@ -1,6 +1,8 @@
 package com.glassstore.catalog.service;
 
 import com.glassstore.catalog.dto.CreateStockTransferRequest;
+import com.glassstore.catalog.dto.StockDeductionRequest;
+import com.glassstore.catalog.dto.StockDeductionResponse;
 import com.glassstore.catalog.dto.StockTransferDTO;
 import com.glassstore.catalog.entity.*;
 import com.glassstore.catalog.repository.*;
@@ -47,6 +49,8 @@ class StockTransferIntegrationTest {
     private InventoryBalanceRepository balanceRepository;
     @Autowired
     private InventoryMovementRepository movementRepository;
+    @Autowired
+    private InventoryDeductionRepository deductionRepository;
     @Autowired
     private ProductVariantRepository variantRepository;
     @Autowired
@@ -213,6 +217,145 @@ class StockTransferIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void paidOrderDeductionUsesItsBranchAndReplaysWithoutWritingDuplicateMovement() {
+        TestStock stock = createStock(0, 3);
+        ProductVariant variant = variantRepository.findBySku(stock.sku()).orElseThrow();
+        variant.setStockQuantity(10);
+        variantRepository.save(variant);
+        InventoryLocation branch02 = locationRepository.findByCodeAndActiveTrue(InventoryService.BRANCH_02)
+                .orElseThrow();
+        balanceRepository.save(InventoryBalance.builder()
+                .variant(variant)
+                .location(branch02)
+                .quantity(7)
+                .build());
+
+        StockDeductionRequest request = saleRequest(501L, "sale-key-501", "TXN-501",
+                "BRANCH_02", stock.sku(), 2);
+        StockDeductionResponse first = inventoryService.deductPaidOrder(request);
+
+        assertFalse(first.duplicate());
+        for (int retry = 0; retry < 3; retry++) {
+            assertTrue(inventoryService.deductPaidOrder(request).duplicate());
+        }
+        assertEquals(3, balanceRepository.findBySkuAndLocationCode(
+                stock.sku(), InventoryService.BRANCH_01).orElseThrow().getQuantity());
+        assertEquals(5, balanceRepository.findBySkuAndLocationCode(
+                stock.sku(), InventoryService.BRANCH_02).orElseThrow().getQuantity());
+        assertEquals(8, variantRepository.findBySku(stock.sku()).orElseThrow().getStockQuantity());
+        List<InventoryMovement> movements = movementRepository
+                .findAllByReferenceTypeAndReferenceId("PAYMENT", "TXN-501");
+        assertEquals(1, movements.size());
+        assertEquals(InventoryService.BRANCH_02, movements.get(0).getSourceLocationCode());
+        assertEquals("ORDER_SERVICE", movements.get(0).getPerformedBy());
+        assertEquals(2, movements.get(0).getQuantity());
+    }
+
+    @Test
+    void aggregateStockCannotAuthorizeASaleFromAnEmptyBranch() {
+        TestStock stock = createStock(0, 3);
+        ProductVariant variant = variantRepository.findBySku(stock.sku()).orElseThrow();
+        InventoryLocation branch02 = locationRepository.findByCodeAndActiveTrue(InventoryService.BRANCH_02)
+                .orElseThrow();
+        balanceRepository.save(InventoryBalance.builder()
+                .variant(variant)
+                .location(branch02)
+                .quantity(0)
+                .build());
+
+        assertStatus(HttpStatus.CONFLICT, () -> inventoryService.deductPaidOrder(
+                saleRequest(507L, "sale-key-507", "TXN-507", "BRANCH_02", stock.sku(), 1)));
+
+        assertEquals(3, balanceRepository.findBySkuAndLocationCode(
+                stock.sku(), InventoryService.BRANCH_01).orElseThrow().getQuantity());
+        assertEquals(0, balanceRepository.findBySkuAndLocationCode(
+                stock.sku(), InventoryService.BRANCH_02).orElseThrow().getQuantity());
+        assertEquals(3, variantRepository.findBySku(stock.sku()).orElseThrow().getStockQuantity());
+        assertTrue(movementRepository.findAllByReferenceTypeAndReferenceId("PAYMENT", "TXN-507").isEmpty());
+    }
+
+    @Test
+    void insufficientSkuRollsBackAllDeductionsAndMovementHistory() {
+        TestStock first = createStock(0, 5);
+        TestStock second = createStock(0, 1);
+        StockDeductionRequest request = saleRequest(502L, "sale-key-502", "TXN-502",
+                "BRANCH_01", first.sku(), 2);
+        request.setItems(List.of(saleItem(first.sku(), 2), saleItem(second.sku(), 2)));
+
+        assertStatus(HttpStatus.CONFLICT, () -> inventoryService.deductPaidOrder(request));
+
+        assertEquals(5, balanceRepository.findBySkuAndLocationCode(
+                first.sku(), InventoryService.BRANCH_01).orElseThrow().getQuantity());
+        assertEquals(1, balanceRepository.findBySkuAndLocationCode(
+                second.sku(), InventoryService.BRANCH_01).orElseThrow().getQuantity());
+        assertEquals(5, variantRepository.findBySku(first.sku()).orElseThrow().getStockQuantity());
+        assertEquals(1, variantRepository.findBySku(second.sku()).orElseThrow().getStockQuantity());
+        assertTrue(movementRepository.findAllByReferenceTypeAndReferenceId("PAYMENT", "TXN-502").isEmpty());
+        assertTrue(deductionRepository.findUnlockedByOrderId(502L).isEmpty());
+    }
+
+    @Test
+    void concurrentSalesForTheLastBranchUnitAllowOnlyOneDeduction() throws Exception {
+        TestStock stock = createStock(0, 1);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> first = executor.submit(() -> deductAfter(start,
+                    saleRequest(503L, "sale-key-503", "TXN-503", "BRANCH_01", stock.sku(), 1)));
+            Future<Boolean> second = executor.submit(() -> deductAfter(start,
+                    saleRequest(504L, "sale-key-504", "TXN-504", "BRANCH_01", stock.sku(), 1)));
+            start.countDown();
+            assertEquals(1, (int) List.of(first.get(), second.get())
+                    .stream().filter(Boolean::booleanValue).count());
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertEquals(0, balanceRepository.findBySkuAndLocationCode(
+                stock.sku(), InventoryService.BRANCH_01).orElseThrow().getQuantity());
+        assertEquals(0, variantRepository.findBySku(stock.sku()).orElseThrow().getStockQuantity());
+        assertEquals(1, movementRepository.findAllByReferenceTypeAndReferenceId("PAYMENT", "TXN-503").size()
+                + movementRepository.findAllByReferenceTypeAndReferenceId("PAYMENT", "TXN-504").size());
+    }
+
+    @Test
+    void concurrentReplayOfTheSameSaleReturnsDuplicateWithoutDeductingTwice() throws Exception {
+        TestStock stock = createStock(0, 4);
+        StockDeductionRequest request = saleRequest(505L, "sale-key-505", "TXN-505",
+                "BRANCH_01", stock.sku(), 2);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<StockDeductionResponse> first = executor.submit(() -> deductReplayAfter(start, request));
+            Future<StockDeductionResponse> second = executor.submit(() -> deductReplayAfter(start, request));
+            start.countDown();
+            List<StockDeductionResponse> responses = List.of(first.get(), second.get());
+            assertEquals(1, (int) responses.stream().filter(StockDeductionResponse::duplicate).count());
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertEquals(2, balanceRepository.findBySkuAndLocationCode(
+                stock.sku(), InventoryService.BRANCH_01).orElseThrow().getQuantity());
+        assertEquals(2, variantRepository.findBySku(stock.sku()).orElseThrow().getStockQuantity());
+        assertEquals(1, movementRepository.findAllByReferenceTypeAndReferenceId("PAYMENT", "TXN-505").size());
+    }
+
+    @Test
+    void reusingAnIdempotencyKeyWithDifferentItemsIsRejected() {
+        TestStock stock = createStock(0, 5);
+        StockDeductionRequest request = saleRequest(506L, "sale-key-506", "TXN-506",
+                "BRANCH_01", stock.sku(), 1);
+        inventoryService.deductPaidOrder(request);
+        request.setItems(List.of(saleItem(stock.sku(), 2)));
+
+        assertStatus(HttpStatus.CONFLICT, () -> inventoryService.deductPaidOrder(request));
+        assertEquals(4, balanceRepository.findBySkuAndLocationCode(
+                stock.sku(), InventoryService.BRANCH_01).orElseThrow().getQuantity());
+        assertEquals(1, movementRepository.findAllByReferenceTypeAndReferenceId("PAYMENT", "TXN-506").size());
+    }
+
     private boolean receiveAfter(CountDownLatch start, Long transferId) throws Exception {
         start.await();
         try {
@@ -222,6 +365,42 @@ class StockTransferIntegrationTest {
             assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
             return false;
         }
+    }
+
+    private boolean deductAfter(CountDownLatch start, StockDeductionRequest request) throws Exception {
+        start.await();
+        try {
+            inventoryService.deductPaidOrder(request);
+            return true;
+        } catch (ResponseStatusException exception) {
+            assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+            return false;
+        }
+    }
+
+    private StockDeductionResponse deductReplayAfter(CountDownLatch start, StockDeductionRequest request)
+            throws Exception {
+        start.await();
+        return inventoryService.deductPaidOrder(request);
+    }
+
+    private StockDeductionRequest saleRequest(
+            Long orderId, String idempotencyKey, String transactionCode, String branchName,
+            String sku, int quantity) {
+        StockDeductionRequest request = new StockDeductionRequest();
+        request.setOrderId(orderId);
+        request.setIdempotencyKey(idempotencyKey);
+        request.setTransactionCode(transactionCode);
+        request.setBranchName(branchName);
+        request.setItems(List.of(saleItem(sku, quantity)));
+        return request;
+    }
+
+    private StockDeductionRequest.Item saleItem(String sku, int quantity) {
+        StockDeductionRequest.Item item = new StockDeductionRequest.Item();
+        item.setSku(sku);
+        item.setQuantity(quantity);
+        return item;
     }
 
     private TestStock createStock(int labQuantity, int branchQuantity) {

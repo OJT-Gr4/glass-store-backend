@@ -36,7 +36,7 @@ public class OrderService {
     private final PromotionService promotions;
     private final PosDataService data;
     private final OrderStatusService orderStatusService;
-    private final OrderCheckoutService teamCheckoutService;
+    private final LabDispatchService labDispatchService;
     private final WarrantyActivationService warrantyActivationService;
 
     @Transactional
@@ -51,7 +51,7 @@ public class OrderService {
                 .cashReceived(request.getCashReceived()).items(new ArrayList<>()).build();
         for (OrderDtos.CheckoutLine line : request.getItems()) {
             order.getItems().add(OrderItem.builder().skuId(line.getSku()).productName(line.getProductName() == null ? line.getSku() : line.getProductName())
-                    .quantity(line.getQuantity()).prescriptionId(line.getPrescriptionId()).build());
+                    .quantity(line.getQuantity()).prescriptionId(line.getPrescriptionId()).expectedUnitPrice(line.getExpectedUnitPrice()).build());
         }
         return create(order, key, token);
     }
@@ -164,7 +164,7 @@ public class OrderService {
         if (saved.getChannel() == SalesChannel.POS && payment.getStatus() == PaymentStatus.SUCCESS) {
             stockDeductionService.enqueue(saved, payment);
             warrantyActivationService.enqueueForPaidOrder(saved);
-            teamCheckoutService.dispatchLabJobIfNeeded(saved);
+            labDispatchService.enqueue(saved);
         }
 
         log.info("Tạo đơn hàng POS thành công: Mã {}", saved.getOrderCode());

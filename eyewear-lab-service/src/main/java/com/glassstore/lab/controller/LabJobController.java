@@ -4,9 +4,10 @@ import com.glassstore.common.dto.ApiResponse;
 import com.glassstore.lab.dto.CreateLabJobRequest;
 import com.glassstore.lab.dto.LabJobResponse;
 import com.glassstore.lab.dto.UpdateJobStatusRequest;
+import com.glassstore.lab.entity.LabJobHistory;
 import com.glassstore.lab.entity.LabJobStatus;
-import com.glassstore.lab.entity.LabJobStatusHistory;
-import com.glassstore.lab.repository.LabJobStatusHistoryRepository;
+import com.glassstore.lab.repository.LabJobHistoryRepository;
+import com.glassstore.lab.repository.LabJobRepository;
 import com.glassstore.lab.service.LabJobService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +27,8 @@ import java.util.Map;
 public class LabJobController {
 
     private final LabJobService labJobService;
-    private final LabJobStatusHistoryRepository historyRepository;
+    private final LabJobRepository labJobRepository;
+    private final LabJobHistoryRepository historyRepository;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<LabJobResponse>>> getLabJobs(
@@ -44,7 +46,7 @@ public class LabJobController {
     }
 
     @GetMapping("/{id}/history")
-    public ResponseEntity<ApiResponse<List<LabJobStatusHistory>>> history(@PathVariable("id") Long id) {
+    public ResponseEntity<ApiResponse<List<LabJobHistory>>> history(@PathVariable("id") Long id) {
         labJobService.getLabJobById(id);
         return ResponseEntity.ok(ApiResponse.success(
                 "OK", historyRepository.findByLabJobIdOrderByChangedAtAsc(id)));
@@ -69,13 +71,17 @@ public class LabJobController {
     public ResponseEntity<ApiResponse<LabJobResponse>> createLabJob(
             @Valid @RequestBody CreateLabJobRequest request) {
         log.info("API POST /api/lab-jobs - Request: {}", request);
+        String key = request.getEffectiveIdempotencyKey();
+        boolean exists = key != null && labJobRepository.findByIdempotencyKey(key).isPresent();
+
         LabJobResponse created = labJobService.createLabJob(request);
+        HttpStatus httpStatus = exists ? HttpStatus.OK : HttpStatus.CREATED;
         ApiResponse<LabJobResponse> response = ApiResponse.<LabJobResponse>builder()
-                .code(HttpStatus.CREATED.value())
-                .message("Tạo lệnh gia công mài kính thành công")
+                .code(httpStatus.value())
+                .message(exists ? "Lệnh gia công đã tồn tại (idempotent)" : "Tạo lệnh gia công mài kính thành công")
                 .data(created)
                 .build();
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(httpStatus).body(response);
     }
 
     @PatchMapping("/{id}/status")

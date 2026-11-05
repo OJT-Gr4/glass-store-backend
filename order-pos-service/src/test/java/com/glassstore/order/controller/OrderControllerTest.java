@@ -92,7 +92,7 @@ class OrderControllerTest {
                 .contentType("application/json").content("""
                 {"channel":"POS","customerName":"QA","paymentMethod":"CASH","branchCode":"BRANCH_01",
                  "voucherCode":"QA10","pointsToUse":50,"cashReceived":2000000,
-                 "items":[{"skuId":"LNS-QA","productName":"Lens","quantity":1,"prescriptionId":7}]}
+                 "items":[{"skuId":"LNS-QA","productName":"Lens","quantity":1,"prescriptionId":7,"unitPrice":500000}]}
                 """))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isCreated())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.status").value("PAID"));
@@ -103,5 +103,6 @@ class OrderControllerTest {
         assertThat(captor.getValue().getItems().get(0).getPrescriptionId()).isEqualTo(7L);
         assertThat(captor.getValue().getPointsToUse()).isEqualTo(50L);
         assertThat(captor.getValue().getCashReceived()).isEqualByComparingTo("2000000");
+        assertThat(captor.getValue().getItems().get(0).getExpectedUnitPrice()).isEqualByComparingTo("500000");
     }
 }

@@ -14,6 +14,7 @@ import java.util.List;
 public class StockDeductionRequest {
 
     @NotNull
+    @Positive
     private Long orderId;
 
     @NotBlank
@@ -34,6 +35,7 @@ public class StockDeductionRequest {
     @Data
     public static class Item {
         @NotBlank
+        @Size(max = 100)
         private String sku;
 
         @NotNull
