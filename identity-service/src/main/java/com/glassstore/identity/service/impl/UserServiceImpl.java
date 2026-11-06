@@ -213,8 +213,8 @@ public class UserServiceImpl implements UserService {
         bruteForceService.checkIfLocked(user);
 
         // 2. Xác thực mật khẩu với BCrypt
-        String inputPassword = request.getPassword() != null ? request.getPassword().trim() : "";
-        boolean matches = passwordEncoder.matches(inputPassword, user.getPasswordHash()) || "Password2026@".equals(inputPassword) || "123456".equals(inputPassword);
+        String inputPassword = request.getPassword() != null ? request.getPassword() : "";
+        boolean matches = passwordEncoder.matches(inputPassword, user.getPasswordHash());
 
         if (!matches) {
             bruteForceService.recordFailedAttempt(user);

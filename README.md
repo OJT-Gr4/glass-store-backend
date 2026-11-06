@@ -1,222 +1,217 @@
-# GlassStore Backend - Omnichannel Eyewear Retail Microservices
+# GlassStore Backend
 
-Dự án Backend xây dựng trên nền tảng **Java 21 (LTS)**, **Spring Boot 3.5.16**, **Spring Cloud 2025.0.3**, **Spring Data JPA**, và **MySQL 8.0**, phục vụ toàn bộ nghiệp vụ chuỗi bán lẻ mắt kính đa kênh (Omnichannel) theo tiêu chuẩn SRS.
+GlassStore uses Java 21, Spring Boot 3.5.16, Spring Cloud 2025.0.3 and MySQL 8.0. The standard local environment has one MySQL server, four schemas, five backend processes and two frontend development servers.
 
----
+## 1. Standard ports and databases
 
-## 1. Công nghệ sử dụng (Tech Stack)
+| Component | Address or port | Schema |
+|---|---|---|
+| MySQL | 127.0.0.1:3306 | Four schemas below |
+| API Gateway | 127.0.0.1:8080 | None |
+| Identity | 127.0.0.1:8081 | db_identity |
+| Catalog | 127.0.0.1:8082 | db_catalog |
+| Order/POS | 127.0.0.1:8083 | db_order |
+| Eyewear Lab | 127.0.0.1:8084 | db_lab |
+| Customer web | http://127.0.0.1:5173 | Through gateway |
+| Internal portal | http://127.0.0.1:5174/login | Through gateway |
 
-- **Ngôn ngữ:** Java 21 (LTS)
-- **Framework:** Spring Boot 3.5.16
-- **Kiến trúc phân tán:** Spring Cloud 2025.0.3
-  - **API Gateway:** Spring Cloud Gateway (Port 8080 - Single Entry Point, Netty Reactive)
-  - **Inter-service Communication:** Spring Cloud OpenFeign (Declarative REST Client)
-- **Cơ sở dữ liệu:** MySQL 8.0 (Logical Database Isolation: 1 MySQL Server chứa 4 Schemas độc lập)
+Use 127.0.0.1 consistently when logging in; localhost and 127.0.0.1 have separate browser storage. Frontend requests use relative /api URLs through the Vite proxy. Do not connect the browser directly to a service or expose a JWT signing secret in frontend variables.
 
-Backend mặc định kết nối MySQL trên cổng `3306`. Nếu dùng MySQL Docker được publish ở `3307`, đặt biến môi trường `DB_PORT=3307` trước khi khởi động cả bốn service. Hai cổng có thể chứa hai bộ dữ liệu khác nhau; kiểm tra đúng server trước khi nhập dữ liệu hoặc chạy migration.
-- **ORM / Persistence:** Spring Data JPA & Hibernate
-- **Bảo mật & Xác thực:** Spring Security 6, JJWT (io.jsonwebtoken 0.11.5), BCrypt
-- **Email Service (Gửi OTP):** Spring Boot Starter Mail (Google SMTP)
-- **Quản lý & Build tool:** Apache Maven (Multi-module Monorepo / Multi-service)
-- **Containerization:** Docker, Docker Compose
+## 2. Prerequisites and folder layout
 
----
+- JDK 21. Set JAVA_HOME to the JDK directory and add its bin directory to PATH. JDK 25 is not the project baseline.
+- Maven 3.9 or newer. Add mvn.cmd to PATH, or set MVN_CMD to its full path in backend/.env.
+- Node.js 20 or newer and npm. Commit and use the existing package-lock.json files; install with npm ci.
+- MySQL 8.0 and mysql.exe for native mode, or a running Docker Desktop installation for Docker mode.
+- Windows PowerShell 5.1 or newer for the supplied .bat/.ps1 launchers.
 
-## 2. Cấu trúc thư mục mã nguồn
+Place the three repositories as follows. The parent directory can have any name:
 
 ```text
-backend/
-├── docker/
-│   └── mysql/
-│       └── init/
-│           └── 01-init-databases.sql    # Tự động khởi tạo 4 Database Schema
-├── docker-compose.yml                   # Khởi chạy MySQL 8.0 (Port 3306)
-├── pom.xml                              # Maven Root POM quản lý phiên bản dùng chung
-├── common-lib/                          # Thư viện dùng chung giữa các service
-│   ├── pom.xml
-│   └── src/main/java/com/glassstore/common/
-│       └── dto/
-│           └── ApiResponse.java         # Chuẩn format JSON Response hệ thống
-├── api-gateway/                         # Spring Cloud Gateway (Port 8080)
-│   ├── pom.xml
-│   └── src/main/
-│       ├── java/com/glassstore/gateway/GatewayApplication.java
-│       └── resources/application.yml   # Cấu hình CORS & Routing
-├── identity-service/                    # Quản lý User, RBAC & OTP (Port 8081)
-│   ├── pom.xml
-│   └── src/main/
-│       ├── java/com/glassstore/identity/IdentityApplication.java
-│       └── resources/application.yml   # Kết nối db_identity & Google Mail SMTP
-├── catalog-service/                     # Gọng kính, Tròng kính, Tồn kho (Port 8082)
-│   ├── pom.xml
-│   └── src/main/
-│       ├── java/com/glassstore/catalog/CatalogApplication.java
-│       └── resources/application.yml   # Kết nối db_catalog
-├── order-pos-service/                   # Đơn hàng, POS, Giỏ hàng, Thanh toán (Port 8083)
-│   ├── pom.xml
-│   └── src/main/
-│       ├── java/com/glassstore/order/OrderPosApplication.java
-│       └── resources/application.yml   # Kết nối db_order & OpenFeign Clients
-└── eyewear-lab-service/                 # Đo mắt OD/OS & Xưởng gia công kính (Port 8084)
-    ├── pom.xml
-    └── src/main/
-        ├── java/com/glassstore/lab/EyewearLabApplication.java
-        └── resources/application.yml   # Kết nối db_lab
+GlassStore/
+  backend/
+  frontend/
+    customer-web/
+    internal-portal/
 ```
 
----
+If your checkout names differ, set CUSTOMER_WEB_DIR and INTERNAL_PORTAL_DIR to their absolute paths in backend/.env. The launcher resolves its backend directory from the script location, not a developer-specific C:\Users path.
 
-## 3. Yêu cầu môi trường (Prerequisites)
+For example, to clone a new workspace:
 
-- **Java JDK:** 21 (khuyến nghị OpenJDK 21 LTS hoặc Eclipse Temurin 21)
-- **Maven:** 3.9+ (hoặc dùng Maven wrapper tương thích với Maven 3.9+)
-- **Docker & Docker Compose:** Đã cài đặt Docker Desktop hoặc Docker Engine để chạy MySQL
-
----
-
-## 4. Phân bổ Cổng và Cơ sở dữ liệu (Ports & Schemas)
-
-Tất cả các truy vấn từ bên ngoài (Frontend Web/Mobile) **chỉ đi qua API Gateway (Port 8080)**.
-
-| Service | Port | Database Schema | Nghiệp vụ chính theo SRS |
-| :--- | :---: | :--- | :--- |
-| **`api-gateway`** | **8080** | *Không sử dụng* | Single Entry Point, Định tuyến, Xử lý CORS tập trung |
-| **`identity-service`** | **8081** | `db_identity` | Đăng ký, đăng nhập JWT, phân quyền RBAC, gửi OTP Gmail |
-| **`catalog-service`** | **8082** | `db_catalog` | Quản lý danh mục, gọng kính, tròng mắt, SKU, tồn kho |
-| **`order-pos-service`** | **8083** | `db_order` | Giỏ hàng, đơn hàng online, bán hàng tại quầy (POS), voucher |
-| **`eyewear-lab-service`**| **8084** | `db_lab` | Phiếu đo mắt OD/OS, Lệnh gia công mài lắp kính xưởng Lab, QC |
-
----
-
-## 5. Hướng dẫn khởi chạy (Getting Started)
-
-### Bước 1: Khởi chạy Database bằng Docker Compose
-Đứng tại thư mục `backend/`, chạy lệnh:
-```bash
-docker compose up -d
-```
-Container MySQL 8.0 sẽ tự động bật trên cổng `3306` và tự động thực thi tuần tự 2 script:
-1. `01-init-databases.sql`: Tạo 4 database schema (`db_identity`, `db_catalog`, `db_order`, `db_lab`).
-2. `02-seed-data.sql`: Tạo toàn bộ cấu trúc bảng và nạp sẵn dữ liệu mẫu thực tế.
-
-> **Mẹo:** Nếu muốn xóa sạch dữ liệu để nạp lại từ đầu:
-> ```bash
-> docker compose down -v && docker compose up -d
-> ```
-
-### Bước 2: Danh sách tài khoản mẫu & Dữ liệu Seed sẵn
-
-**Tất cả tài khoản đều có mật khẩu mặc định là:** `123456`
-
-| Email đăng nhập | Tên người dùng | Vai trò (Role) | Chức năng kiểm thử |
-| :--- | :--- | :--- | :--- |
-| `adminoptic@gmail.com` | Admin | `ROLE_ADMIN` | Quản trị toàn hệ thống, cấu hình |
-| `posoptic@gmail.com` | Nguyễn Văn Nam | `ROLE_SALES_STAFF` | Bán hàng trực tiếp tại quầy POS |
-| `optometryoptic@gmail.com` | Lê Thị Ánh Tuyết | `ROLE_OPTOMETRIST` | Nhập kết quả đo khúc xạ OD/OS |
-| `laboptic@gmail.com` | Trần Văn Tuấn | `ROLE_LAB_TECH` | Đổi trạng thái mài kính & kiểm định QC |
-| `customer@gmail.com` | Nguyễn Hoàng Duy | `ROLE_CUSTOMER` | Đăng nhập mua kính online trên Web |
-
-**Dữ liệu sản phẩm mẫu có sẵn (50 chiếc tồn kho mỗi loại):**
-- Gọng kính Titanium Bolon (`FRM-BOLON-BLK`, `FRM-BOLON-SIL`)
-- Gọng nhựa TR90 Gentle Monster (`FRM-GM-BLK`, `FRM-GM-TOR`)
-- Gọng phi công Ray-Ban Aviator (`FRM-RB-GLD`)
-- Tròng kính Chemi U2 BlueCut 1.60 (`LNS-CHEMI-160`) & Tròng đổi màu Essilor (`LNS-ESS-TRANS`)
-- Kính râm Ray-Ban Wayfarer Polarized (`SUN-RB-WAYF-BLK`)
-- Phụ kiện Hộp da + Khăn lau Nano (`ACC-BOX-NANO`)
-
-### Bước 3: Build mã nguồn bằng Maven
-```bash
-mvn clean compile
+```powershell
+mkdir GlassStore
+cd GlassStore
+git clone -b dev https://github.com/OJT-Gr4/glass-store-backend.git backend
+mkdir frontend
+git clone -b dev https://github.com/OJT-Gr4/glass-store-customer-web-.git frontend/customer-web
+git clone -b dev https://github.com/OJT-Gr4/glass-store-internal-portal.git frontend/internal-portal
 ```
 
-### Bước 4: Thứ tự khởi chạy các dịch vụ (Services)
-Khởi chạy lần lượt từng Application (qua IntelliJ IDEA hoặc lệnh `mvn spring-boot:run`):
-1. **`api-gateway`** (`GatewayApplication.java`) - Port 8080
-2. **`identity-service`** (`IdentityApplication.java`) - Port 8081
-3. **`catalog-service`** (`CatalogApplication.java`) - Port 8082
-4. **`eyewear-lab-service`** (`EyewearLabApplication.java`) - Port 8084
-5. **`order-pos-service`** (`OrderPosApplication.java`) - Port 8083
+## 3. One configuration file for local startup
 
----
+In backend, copy .env.example to .env and review the values:
 
-## 6. Chuẩn JSON Response & Giao tiếp liên dịch vụ
-
-### 6.1. Định dạng phản hồi chuẩn (Standard API Response)
-Tất cả các REST Controller trả về theo format `ApiResponse<T>`:
-```json
-{
-  "code": 200,
-  "message": "Success",
-  "data": { ... },
-  "timestamp": "2026-10-30T15:30:00"
-}
+```powershell
+Copy-Item .env.example .env
 ```
 
-### 6.2. Giao tiếp OpenFeign giữa các Service
-- Khi POS thanh toán thành công, `order-pos-service` ghi một sự kiện trừ kho vào outbox cùng giao dịch đơn hàng/thanh toán, sau đó gọi `catalog-service` qua OpenFeign. Catalog trừ có điều kiện theo SKU và chi nhánh, ghi lịch sử trong cùng transaction; unique order/idempotency keys và kiểm tra lịch sử khiến request lặp chỉ được replay, không trừ lại. Lỗi kỹ thuật được retry tối đa 10 lần; lỗi nghiệp vụ ở trạng thái `FAILED`, còn lỗi kỹ thuật quá giới hạn chuyển `RECONCILIATION_REQUIRED` để đối soát hoặc retry thủ công.
-- Khi đơn hàng kính thuốc được thanh toán thành công, `order-pos-service` gọi sang `eyewear-lab-service` qua OpenFeign (`POST /api/lab-jobs`) để khởi tạo lệnh gia công mài lắp kính cho xưởng Lab.
+.env is private to the machine and ignored by Git. Use unquoted KEY=value lines. Application configuration imports this file; the shared launcher loads it for all processes. Do not commit credentials, runtime logs or database backups.
 
----
+| Setting | Default | Meaning |
+|---|---|---|
+| DB_MODE | native | native or docker for setup/check tools |
+| DB_HOST | 127.0.0.1 | MySQL hostname |
+| DB_PORT | 3306 | MySQL port for all four services |
+| DB_USERNAME | root | Local database user |
+| DB_PASSWORD | root | Development example; replace for your server |
+| JWT_SECRET | Development value in .env.example | Same signing key for all five services |
+| IDENTITY_PORT / CATALOG_PORT / ORDER_PORT / LAB_PORT | 8081 / 8082 / 8083 / 8084 | Backend listeners and default internal routes |
+| GATEWAY_PORT | 8080 | Gateway listener and frontend proxy target |
+| CUSTOMER_WEB_PORT / INTERNAL_PORTAL_PORT | 5173 / 5174 | Frontend listeners |
+| DEMO_SEED_ENABLED | false | Legacy Java sample initializers disabled; canonical SQL is the source for new machines |
+| SHOW_SQL | false | SQL logging |
+| JPA_DDL_AUTO | update | Local schema update; not a substitute for reviewed migrations |
 
-## 7. Danh sách REST API Endpoints chính
+Keep the standard ports unless the team deliberately agrees otherwise. Changing a port requires consistent URLs/proxy settings. Vite uses strictPort and fails when its port is occupied instead of silently switching to 5175 or another port. If starting a service through the IDE, use backend or its module as the working directory so the shared .env can be located.
 
-Base URL Gateway: `http://localhost:8080`
+An old frontend .env.local may override API settings. The shared launcher rejects old non-empty direct API URLs; leave VITE_API_BASE_URL or VITE_API_GATEWAY_URL empty to use the proxy.
 
-| Phương thức | Đường dẫn Gateway | Dịch vụ đích | Mô tả | Mã HTTP |
-| :--- | :--- | :--- | :--- | :---: |
-| `POST` | `/api/auth/login` | `identity-service` | Đăng nhập hệ thống, trả về JWT Token | 200 OK |
-| `POST` | `/api/auth/register` | `identity-service` | Đăng ký tài khoản khách hàng | 201 Created |
-| `POST` | `/api/auth/send-otp` | `identity-service` | Gửi mã OTP xác thực qua Google SMTP | 200 OK |
-| `GET` | `/api/products` | `catalog-service` | Lấy danh sách kính (bộ lọc giá, kiểu dáng, chất liệu) | 200 OK |
-| `GET` | `/api/products/{id}` | `catalog-service` | Xem chi tiết gọng/tròng/kính râm | 200 OK |
-| `POST` | `/api/orders` | `order-pos-service` | Tạo đơn hàng đặt kính Online (cần `Idempotency-Key`) | 201 Created |
-| `GET` | `/api/cart` | `order-pos-service` | Lấy / tạo giỏ hàng khách | 200 OK |
-| `POST` | `/api/cart/items` | `order-pos-service` | Thêm SKU vào giỏ | 201 Created |
-| `POST` | `/api/cart/checkout` | `order-pos-service` | Đặt hàng từ giỏ | 201 Created |
-| `POST` | `/api/pos/sessions` | `order-pos-service` | Mở phiên bán hàng POS | 201 Created |
-| `POST` | `/api/pos/checkout` | `order-pos-service` | Bán hàng tại quầy (CASH settle ngay) | 201 Created |
-| `POST` | `/api/payments/callback` | `order-pos-service` | Webhook cổng thanh toán (chưa cấu hình provider) | 200 OK |
-| `POST` | `/api/prescriptions` | `eyewear-lab-service`| Lưu thông số đo mắt OD/OS cho khách hàng | 201 Created |
-| `GET` | `/api/lab-jobs` | `eyewear-lab-service`| Lấy danh sách kính chờ mài lắp tại xưởng | 200 OK |
-| `PATCH`| `/api/lab-jobs/{id}/status`| `eyewear-lab-service`| Cập nhật trạng thái gia công (Mài/QC/Bàn giao)| 200 OK |
+## 4. Database setup: choose one mode
 
----
+The setup tools never drop a database, reset a volume or import the seed over existing tables. They do not silently switch between the old Docker 3307 instance and native MySQL 3306.
 
-## 9. Quản lý tồn kho GS-23
+### 4.1 Native MySQL, including the existing team demo machine
 
-`catalog-service` quản lý tồn vật lý theo SKU tại `BRANCH_01`, `BRANCH_02` và `LAB`. Khi khởi động, schema được Hibernate cập nhật theo entity hiện có; các SKU cũ chưa có số liệu theo địa điểm được chuyển nguyên số lượng `stock_quantity` sang `LAB`, hai chi nhánh bắt đầu từ 0. Các hàng tồn đã được phân bổ trước đó không bị ghi đè.
+Set DB_MODE=native and the credentials for the actual MySQL server. Ensure its Windows service is running. If mysql.exe is not on PATH, set MYSQL_EXE to its full path in .env.
 
-| Phương thức | Đường dẫn | Mô tả |
-| :--- | :--- | :--- |
-| `GET` | `/api/inventory` | Tồn từng SKU theo ba địa điểm |
-| `GET` | `/api/inventory/locations` | Danh sách địa điểm |
-| `GET` | `/api/inventory/transfers` | Danh sách phiếu điều chuyển |
-| `GET` | `/api/inventory/movements` | Tra cứu lịch sử biến động (lọc tùy chọn theo SKU, địa điểm, mã tham chiếu; tối đa 100 dòng/trang) |
-| `POST` | `/api/inventory/transfers` | Tạo phiếu `PENDING` với kho nguồn, kho đích và các SKU |
-| `PATCH` | `/api/inventory/transfers/{id}/receive` | Xác nhận nhận hàng và cập nhật cả hai kho nguyên tử |
+On a new server with no GlassStore tables:
 
-Tạo phiếu không giữ hàng và chưa làm thay đổi tồn. Khi nhận phiếu `PENDING`, catalog kiểm tra lại số dư nguồn bằng câu lệnh cập nhật có điều kiện, trừ kho nguồn, cộng kho đích, cập nhật trạng thái và ghi lịch sử xuất/nhập trong cùng transaction. Khóa phiếu ngăn xác nhận đồng thời hoặc lặp lại. JWT và vai trò `ROLE_ADMIN`/`ROLE_LAB` bảo vệ các API inventory, tương ứng với quyền của route `/stock-transfer` trên portal. Hệ thống hiện chưa có phân quyền theo từng chi nhánh, nên các vai trò được phép thấy các địa điểm đang hoạt động.
-
-Các bản ghi `IN_TRANSIT` đã tạo theo luồng GS-23 cũ vẫn nhận được: vì tồn nguồn đã bị trừ khi xuất, bước nhận chỉ cộng kho đích và đồng bộ lại tổng tồn SKU, không trừ nguồn lần nữa. API `dispatch` cũ không còn được dùng cho phiếu mới. Lịch sử địa điểm được lưu trong `inventory_movements` và có thể tra cứu qua endpoint ở trên.
-
-POS gửi `Idempotency-Key` cho `POST /api/orders`. `order-pos-service` gọi endpoint nội bộ `POST /internal/inventory/sales/deduct` trên cổng nội bộ của catalog-service; endpoint này không được định tuyến qua API Gateway. Địa điểm bán được xác định từ nhãn chi nhánh hiện tại; nhãn không khớp địa điểm đã hỗ trợ bị từ chối, không trừ vào kho mặc định.
-
-Lệnh kiểm thử nhanh:
-
-```bash
-mvn -pl catalog-service,order-pos-service -am test
+```powershell
+.\SETUP_DATABASE.bat -Mode native
 ```
 
-Internal Portal dùng `/api/inventory` qua API Gateway (Vite dev proxy tới cổng 8080). Khi triển khai production, cấu hình `VITE_API_GATEWAY_URL` theo môi trường.
+On a server that already has GlassStore data:
 
----
+```powershell
+.\SETUP_DATABASE.bat -Mode native -CheckOnly
+```
 
-## 10. Quy tắc Git & Phân nhánh (Git Workflow)
+The first command refuses a database that already contains GlassStore tables. For an upgrade, keep the existing data and review the SQL under docker/mysql/migrations individually. Do not rerun init scripts or enable legacy Java seed as an upgrade method.
 
-1. **Nhánh `main`:** Nhánh chính chứa mã nguồn ổn định nhất phục vụ nộp bài và demo. Không commit/push trực tiếp vào nhánh này.
-2. **Nhánh `dev`:** Nhánh làm việc chung hàng ngày của team. Mọi tính năng sau khi kiểm thử nội bộ sẽ được merge vào `dev`.
-3. **Quy trình làm việc của thành viên:**
-   - Clone repo và chuyển sang `dev`: `git checkout dev && git pull origin dev`
-   - Tạo nhánh tính năng mới: `git checkout -b feature/<ten-tinh-nang>`
-   - Commit chuẩn Convention: `git commit -m "feat(catalog): add product filter by frame shape"`
-   - Đẩy nhánh lên Remote và tạo Pull Request (PR) merge vào nhánh `dev`.
+### 4.2 Docker MySQL on a new machine
+
+Set DB_MODE=docker, DB_HOST=127.0.0.1, DB_PORT=3306 and DB_USERNAME=root in .env. Start Docker Desktop, then run:
+
+```powershell
+.\SETUP_DATABASE.bat -Mode docker
+```
+
+The setup uses docker-compose.yml, container glassstore-dev-mysql and volume glassstore_dev_mysql_data_v2. It waits for MySQL health. If native MySQL already occupies 3306, setup stops with an error; it does not stop that server or choose a different data source automatically. Use native mode for that server instead.
+
+The new volume is separate from the historical glass_store_mysql_data volume on 3307. No old volume is deleted or migrated automatically. Docker init scripts execute only for a new empty volume. Stopping the applications does not stop MySQL.
+
+Docker database smoke test on 2026-11-06 passed: MySQL 8.0 became healthy, all three init scripts loaded the baseline counts below, a Windows MySQL client connected through the published TCP port, and records survived a container restart. The test used a separate container/volume and temporary port 13316 because native MySQL occupied 3306. This checks database bootstrap and persistence; it does not claim a full application UAT against Docker. Standard team configuration remains port 3306.
+
+## 5. Canonical development dataset
+
+The new-machine setup runs these scripts in order:
+
+1. docker/mysql/init/01-init-databases.sql creates the four schemas.
+2. docker/mysql/init/02-seed-data.sql creates baseline tables and consistent sample records. A guard rejects existing tables before loading data.
+3. docker/mysql/init/03-opening-inventory.sql creates opening balances for LAB, BRANCH_01 and BRANCH_02 without increasing total stock.
+
+Verified baseline:
+
+| Data | Count |
+|---|---:|
+| Users | 14 |
+| Products | 15 |
+| Product variants/SKUs | 21 |
+| Orders | 6 |
+| Prescriptions | 6 |
+| Lab jobs | 5 |
+| Inventory balances | 63 |
+| Total stock across locations | 1540 |
+
+Opening stock: BRANCH_01 has 105 units, BRANCH_02 has 105 units and LAB has 1330 units. Each SKU receives up to 5 units per branch, respecting its total quantity. Catalog startup creates only missing structural locations/balances and preserves existing balances; a restart does not refill sold stock.
+
+Sample users for this SQL dataset all use password 123456, stored as a verified BCrypt hash:
+
+| Login | Email | Role |
+|---|---|---|
+| admin | adminoptic@gmail.com | ROLE_ADMIN |
+| staff | posoptic@gmail.com | ROLE_SALES_STAFF |
+| optometrist | optometryoptic@gmail.com | ROLE_OPTOMETRIST |
+| labtech | laboptic@gmail.com | ROLE_LAB_TECH |
+| customer | customer@gmail.com | ROLE_CUSTOMER |
+
+The sample records are development fixtures, not proof of successful payment-provider or hardware integration. Runtime data can differ after sales and transfers. Matching initial seed data does not synchronize later changes between developers' local databases.
+
+Historical datasets may contain an incorrect default-password hash. Check and repair only that known fixture with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/repair-demo-credentials.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/repair-demo-credentials.ps1 -Apply
+```
+
+The repair requires the exact old hash and canonical username/email pair. It does not reset custom passwords, create accounts or change roles. Before applying, it stores a private backup under .runtime/backups. Backend login now checks only BCrypt; there is no universal demo-password bypass.
+
+## 6. Run all five BE services and both FE sites
+
+From backend:
+
+```powershell
+.\START_GLASSSTORE.bat
+```
+
+The launcher checks JDK 21, Node/npm, the database, frontend directories and all seven application ports. It builds the backend with Maven, runs npm ci if node_modules is missing, then launches processes in the background with hidden windows. It records process IDs and logs in backend/.runtime.
+
+It never starts a second instance on occupied ports. A launch acknowledgement is not proof that all services finished startup. Check readiness with:
+
+```powershell
+.\CHECK_GLASSSTORE.bat
+```
+
+After a successful build/install, an optional quicker launch is:
+
+```powershell
+.\START_GLASSSTORE.bat -SkipBuild -SkipInstall
+```
+
+Only use -SkipBuild when existing JARs match the current source. After pulling Java changes or configuration changes, rebuild and restart the applications. Do not use old JARs to demonstrate new code.
+
+To stop applications created by this launcher:
+
+```powershell
+.\STOP_GLASSSTORE.bat
+```
+
+Stop checks PID/start-time records and stops only its own process trees, not every application using the same port. It leaves MySQL and its data running. Processes launched manually or by an older script are not automatically taken over; close their original sessions first.
+
+The parent-folder start_all.bat/start_all.ps1/run_project.bat wrappers delegate to this launcher when present. The backend .bat files and scripts are tracked in the backend repository and are the portable entry points for teammates.
+
+## 7. Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| Port already occupied | Run CHECK_GLASSSTORE.bat. Do not launch twice or kill an unrelated process. |
+| Java 25 / unsupported release | Correct JAVA_HOME/PATH to JDK 21 and verify java -version and mvn -v. |
+| DB connection refused | Verify DB_MODE, DB_HOST/DB_PORT and MySQL service/Docker health. |
+| DB access denied | Review DB_USERNAME/DB_PASSWORD in private .env; do not change application code per machine. |
+| Missing tables/data | On a fresh machine run setup once. On an existing DB review migrations; do not reset it. |
+| POS reports out of stock | Inspect quantities at the selected branch, not just global/LAB stock. Use a real transfer for an existing DB. |
+| Login 401 | Use actual usernames above; verify password hash/status and clear an expired browser session. Do not reintroduce a fake token or password bypass. |
+| Service-to-service 401 | Use the same JWT_SECRET across the five processes and restart them after changes. |
+| Browser 404/502 | Use the documented FE URLs and inspect gateway/downstream logs. |
+| Vite silently uses another port | Updated configs use strictPort. Check that the teammate pulled the frontend changes too. |
+
+Logs are .runtime/<service>.log and .runtime/<service>.err.log. CHECK_GLASSSTORE checks both FE HTTP responses, public catalog and the expected unauthenticated 401 for orders. It does not automatically relaunch services or report UAT completion.
+
+The first catalog request can take longer during startup. HTTP readiness checks wait up to 30 seconds per request and still fail on a real timeout/error; this startup check is not a performance certification.
+
+## 8. Validation and data sharing
+
+Compile/package with Java 21 and run the tests relevant to changes. Spring integration tests must use their H2 test configuration or explicit test datasource overrides; never point create-drop tests at the development MySQL server.
+
+Share code, .env.example, canonical init scripts and reviewed migrations through the repositories. Personal .env, logs, credential backups and runtime data remain local. If the team needs one live shared dataset, provision an agreed database server and access policy separately; do not open a developer's MySQL to the internet as part of this local setup.

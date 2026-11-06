@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 
 @Component
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "glassstore.demo.seed.enabled", havingValue = "true")
 @RequiredArgsConstructor
 @Slf4j
 public class DataInitializer implements CommandLineRunner {

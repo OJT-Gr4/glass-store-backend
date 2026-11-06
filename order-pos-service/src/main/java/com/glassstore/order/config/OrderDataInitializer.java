@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Component
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "glassstore.demo.seed.enabled", havingValue = "true")
 @RequiredArgsConstructor
 @Slf4j
 public class OrderDataInitializer implements CommandLineRunner {

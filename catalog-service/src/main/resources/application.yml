@@ -1,18 +1,20 @@
 server:
-  port: 8082
+  port: ${CATALOG_PORT:8082}
 
 spring:
+  config:
+    import: optional:file:./.env[.properties],optional:file:../.env[.properties],optional:file:./backend/.env[.properties]
   application:
     name: catalog-service
   datasource:
-    url: jdbc:mysql://localhost:${DB_PORT:3306}/db_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8
-    username: root
-    password: root
+    url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/db_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    show-sql: ${SHOW_SQL:false}
     properties:
       hibernate:
         format_sql: true
@@ -20,3 +22,8 @@ spring:
 
 jwt:
   secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+
+glassstore:
+  demo:
+    seed:
+      enabled: ${DEMO_SEED_ENABLED:false}

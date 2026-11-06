@@ -1,0 +1,12 @@
+﻿task: S2-D3-05
+status: implemented_pending_business_confirmation
+requirements: [FR-EYE-04, FR-EYE-05, FR-EYE-06, FR-EYE-08, BR-21, BR-22]
+backend_tests:
+  passed: 51
+  failed: 0
+  skipped: 0
+validation: MockMvc requests through Spring security and persistence
+pending:
+  - Business owner confirmation of measurement domains and warning rules
+  - Dependency owner agreement and live identity-service verification
+  - Shared backend progression-warning rule

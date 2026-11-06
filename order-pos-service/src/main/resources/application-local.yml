@@ -1,7 +1,7 @@
 # Opt in with SPRING_PROFILES_ACTIVE=local; credentials may be overridden per machine.
 spring:
   datasource:
-    url: ${ORDER_DB_URL:jdbc:mysql://localhost:3306/db_order?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh}
-    username: ${ORDER_DB_USERNAME:root}
-    password: ${ORDER_DB_PASSWORD:root}
+    url: ${ORDER_DB_URL:jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/db_order?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8}
+    username: ${ORDER_DB_USERNAME:${DB_USERNAME:root}}
+    password: ${ORDER_DB_PASSWORD:${DB_PASSWORD:root}}
     driver-class-name: com.mysql.cj.jdbc.Driver

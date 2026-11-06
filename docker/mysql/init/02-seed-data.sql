@@ -1,3 +1,16 @@
+-- Canonical, fresh-only development dataset. Never run on an existing database.
+SET NAMES utf8mb4;
+USE db_identity;
+DELIMITER //
+CREATE PROCEDURE glassstore_assert_empty_demo()
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema IN ('db_identity','db_catalog','db_order','db_lab')) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'GlassStore seed requires empty schemas. Existing data was not reset; use reviewed migrations.';
+  END IF;
+END//
+DELIMITER ;
+CALL glassstore_assert_empty_demo();
+DROP PROCEDURE glassstore_assert_empty_demo;
 -- ==============================================================================
 -- 02-seed-data.sql: Khởi tạo bảng dữ liệu và nạp dữ liệu mẫu (Seed Data)
 -- Chuẩn hóa theo SRS Omnichannel Eyewear Retail & Eyecare Management System
@@ -46,34 +59,34 @@ INSERT INTO `roles` (`id`, `name`, `description`) VALUES
 (3, 'ROLE_OPTOMETRIST', 'Bác sĩ / Kỹ thuật viên đo khám khúc xạ có CCHN'),
 (4, 'ROLE_LAB_TECH', 'Kỹ thuật viên xưởng gia công mài lắp kính'),
 (5, 'ROLE_CUSTOMER', 'Khách hàng mua sắm đa kênh (Web, App, POS)')
-ON DUPLICATE KEY UPDATE `description` = VALUES(`description`);
+ON DUPLICATE KEY UPDATE `id` = `id`;
 
--- Nạp Users mẫu (Mật khẩu mặc định: 123456 -> mã hóa BCrypt: $2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi)
+-- Nạp Users mẫu (Mật khẩu mặc định: 123456 -> mã hóa BCrypt: $2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom)
 INSERT INTO `users` (`id`, `username`, `email`, `password_hash`, `full_name`, `phone_number`, `employee_code`, `branch_name`, `status`) VALUES
 -- Ban Quản Trị & Cửa Hàng Trưởng
-(1, 'admin', 'adminoptic@gmail.com', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Admin', '0901000001', 'ADM-001', 'Trụ Sở Chính (Headquarter)', 'ACTIVE'),
-(2, 'manager_nam', 'nam.le@optivision.vn', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Lê Hoàng Nam (Store Manager)', '0901000014', 'STF-014', 'Tràng Tiền Plaza (Hà Nội)', 'ACTIVE'),
+(1, 'admin', 'adminoptic@gmail.com', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Admin', '0901000001', 'ADM-001', 'Trụ Sở Chính (Headquarter)', 'ACTIVE'),
+(2, 'manager_nam', 'nam.le@optivision.vn', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Lê Hoàng Nam (Store Manager)', '0901000014', 'STF-014', 'Tràng Tiền Plaza (Hà Nội)', 'ACTIVE'),
 
 -- Nhân Viên Bán Hàng & Thu Ngân POS
-(3, 'staff', 'posoptic@gmail.com', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Nguyễn Văn Nam', '0901000002', 'NV-001', 'Flagship Q.1 (TP.HCM)', 'ACTIVE'),
-(4, 'staff_ha', 'ha.le@optivision.vn', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Lê Văn Hà (POS Tràng Tiền)', '0912345678', 'STF-012', 'Tràng Tiền Plaza (Hà Nội)', 'ACTIVE'),
-(5, 'staff_vy', 'vy.nguyen@optivision.vn', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Nguyễn Thảo Vy (Thủ Kho)', '0903112233', 'STF-092', 'Thảo Điền Store (Q.2)', 'ACTIVE'),
+(3, 'staff', 'posoptic@gmail.com', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Nguyễn Văn Nam', '0901000002', 'NV-001', 'Flagship Q.1 (TP.HCM)', 'ACTIVE'),
+(4, 'staff_ha', 'ha.le@optivision.vn', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Lê Văn Hà (POS Tràng Tiền)', '0912345678', 'STF-012', 'Tràng Tiền Plaza (Hà Nội)', 'ACTIVE'),
+(5, 'staff_vy', 'vy.nguyen@optivision.vn', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Nguyễn Thảo Vy (Thủ Kho)', '0903112233', 'STF-092', 'Thảo Điền Store (Q.2)', 'ACTIVE'),
 
 -- Bác Sĩ & KTV Đo Khúc Xạ Nhãn Khoa
-(6, 'optometrist', 'optometryoptic@gmail.com', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Lê Thị Ánh Tuyết', '0901000003', 'KTV-001', 'Flagship Q.1 (TP.HCM)', 'ACTIVE'),
-(7, 'optom_phuc', 'phuc.lam@optivision.vn', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'BS. Lâm Hoàng Phúc', '0908889999', 'STF-102', 'Flagship Q.1 (TP.HCM)', 'ACTIVE'),
+(6, 'optometrist', 'optometryoptic@gmail.com', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Lê Thị Ánh Tuyết', '0901000003', 'KTV-001', 'Flagship Q.1 (TP.HCM)', 'ACTIVE'),
+(7, 'optom_phuc', 'phuc.lam@optivision.vn', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'BS. Lâm Hoàng Phúc', '0908889999', 'STF-102', 'Flagship Q.1 (TP.HCM)', 'ACTIVE'),
 
 -- Kỹ Thuật Viên Xưởng Lab Mài Lắp
-(8, 'labtech', 'laboptic@gmail.com', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Trần Văn Tuấn', '0901000004', 'LAB-001', 'Lab Flagship Q.1', 'ACTIVE'),
-(9, 'lab_dinh', 'dinh.nguyen@optivision.vn', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Nguyễn Văn Định (KTV QC)', '0988776655', 'STF-078', 'Lab Tràng Tiền HN', 'ACTIVE'),
+(8, 'labtech', 'laboptic@gmail.com', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Trần Văn Tuấn', '0901000004', 'LAB-001', 'Lab Flagship Q.1', 'ACTIVE'),
+(9, 'lab_dinh', 'dinh.nguyen@optivision.vn', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Nguyễn Văn Định (KTV QC)', '0988776655', 'STF-078', 'Lab Tràng Tiền HN', 'ACTIVE'),
 
 -- Khách Hàng Thành Viên Đa Kênh
-(10, 'customer', 'customer@gmail.com', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Nguyễn Hoàng Duy', '0918732998', NULL, NULL, 'ACTIVE'),
-(11, 'cus_kieu', 'thuykieu.le@gmail.com', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Lê Thúy Kiều', '0988124551', NULL, NULL, 'ACTIVE'),
-(12, 'cus_quang', 'quang.trinh@gmail.com', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Trịnh Minh Quang', '0912449002', NULL, NULL, 'ACTIVE'),
-(13, 'cus_ngoc', 'bichngoc.pham@gmail.com', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Phạm Thị Bích Ngọc', '0977898332', NULL, NULL, 'ACTIVE'),
-(14, 'cus_kiet', 'kiet.do@gmail.com', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'Đỗ Tuấn Kiệt', '0938552191', NULL, NULL, 'ACTIVE')
-ON DUPLICATE KEY UPDATE `full_name` = VALUES(`full_name`), `employee_code` = VALUES(`employee_code`), `branch_name` = VALUES(`branch_name`);
+(10, 'customer', 'customer@gmail.com', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Nguyễn Hoàng Duy', '0918732998', NULL, NULL, 'ACTIVE'),
+(11, 'cus_kieu', 'thuykieu.le@gmail.com', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Lê Thúy Kiều', '0988124551', NULL, NULL, 'ACTIVE'),
+(12, 'cus_quang', 'quang.trinh@gmail.com', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Trịnh Minh Quang', '0912449002', NULL, NULL, 'ACTIVE'),
+(13, 'cus_ngoc', 'bichngoc.pham@gmail.com', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Phạm Thị Bích Ngọc', '0977898332', NULL, NULL, 'ACTIVE'),
+(14, 'cus_kiet', 'kiet.do@gmail.com', '$2a$10$C6ujiQrjW/xUIVpiW0u7xuxeW2nYMd6.GoB3NacC14UG/6R9MQpom', 'Đỗ Tuấn Kiệt', '0938552191', NULL, NULL, 'ACTIVE')
+ON DUPLICATE KEY UPDATE `id` = `id`;
 
 -- Gán quyền Role cho Users
 INSERT INTO `user_roles` (`user_id`, `role_id`) VALUES
@@ -91,7 +104,7 @@ INSERT INTO `user_roles` (`user_id`, `role_id`) VALUES
 (12, 5), -- cus_quang -> ROLE_CUSTOMER
 (13, 5), -- cus_ngoc -> ROLE_CUSTOMER
 (14, 5)  -- cus_kiet -> ROLE_CUSTOMER
-ON DUPLICATE KEY UPDATE `role_id` = VALUES(`role_id`);
+ON DUPLICATE KEY UPDATE `role_id` = `role_id`;
 
 
 -- ==============================================================================
@@ -144,6 +157,9 @@ CREATE TABLE IF NOT EXISTS `product_variants` (
     `price` DECIMAL(12, 2) NOT NULL,
     `cost_price` DECIMAL(12, 2) NOT NULL,
     `stock_quantity` INT NOT NULL DEFAULT 50,
+    `reserved_quantity` INT NOT NULL DEFAULT 0,
+    `non_sellable_quantity` INT NOT NULL DEFAULT 0,
+    `version` BIGINT NOT NULL DEFAULT 0,
     `image_url` VARCHAR(500),
     `status` VARCHAR(20) DEFAULT 'ACTIVE',
     `failed_attempts` INT DEFAULT 0,
@@ -159,7 +175,7 @@ INSERT INTO `categories` (`id`, `name`, `slug`, `description`) VALUES
 (2, 'Tròng Kính', 'trong-kinh', 'Tròng kính thuốc chống ánh sáng xanh, chống trầy xước, đổi màu Transitions'),
 (3, 'Kính Râm', 'kinh-ram', 'Kính mát thời trang chống tia cực tím UV400 và phân cực Polarized'),
 (4, 'Phụ Kiện', 'phu-kien', 'Hộp đựng da thủ công, khăn lau microfiber, nước lau nano diệt khuẩn')
-ON DUPLICATE KEY UPDATE `name` = VALUES(`name`);
+ON DUPLICATE KEY UPDATE `id` = `id`;
 
 -- Nạp Brands (Thương hiệu chuẩn thế giới)
 INSERT INTO `brands` (`id`, `name`, `country`, `description`) VALUES
@@ -171,7 +187,7 @@ INSERT INTO `brands` (`id`, `name`, `country`, `description`) VALUES
 (6, 'Carl Zeiss', 'Đức', 'Tập đoàn quang học huyền thoại 175 năm công nghệ tròng Freeform'),
 (7, 'Charmant', 'Nhật Bản', 'Thương hiệu gọng Titanium khoan không viền số 1 Nhật Bản'),
 (8, 'Oakley', 'Mỹ', 'Dòng kính mát thể thao chuyên dụng với tròng Prizm chống va đập')
-ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `country` = VALUES(`country`);
+ON DUPLICATE KEY UPDATE `id` = `id`;
 
 -- Nạp Products (14 sản phẩm kính mắt đa dạng)
 INSERT INTO `products` (`id`, `name`, `slug`, `category_id`, `brand_id`, `product_type`, `description`, `status`) VALUES
@@ -190,7 +206,7 @@ INSERT INTO `products` (`id`, `name`, `slug`, `category_id`, `brand_id`, `produc
 (13, 'Kính Râm Ray-Ban Classic Wayfarer Polarized RB2140', 'kinh-ram-ray-ban-wayfarer-polarized', 3, 2, 'SUNGLASSES', 'Kính râm gọng đen mắt xanh đen phân cực chống lóa kinh điển bảo vệ mắt 100% UV400', 'ACTIVE'),
 (14, 'Kính Mát Thể Thao Oakley Holbrook Prizm Sapphire', 'kinh-mat-oakley-holbrook-prizm', 3, 8, 'SUNGLASSES', 'Gọng O-Matter nhẹ bền chống va đập, tròng Prizm Sapphire tăng cường độ tương phản', 'ACTIVE'),
 (15, 'Combo Phụ Kiện Hộp Đựng Da Khâu Tay & Khăn Lau Nano', 'hop-dung-kinh-da-khan-lau-nano', 4, 1, 'ACCESSORY', 'Bộ phụ kiện bảo quản kính chuyên dụng cao cấp chống va đập và dung dịch nano 60ml', 'ACTIVE')
-ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `description` = VALUES(`description`);
+ON DUPLICATE KEY UPDATE `id` = `id`;
 
 -- Nạp Biến thể sản phẩm (SKU) có Barcode, giá bán, chiết suất và tồn kho
 INSERT INTO `product_variants` (`id`, `product_id`, `sku`, `barcode`, `name`, `color`, `frame_shape`, `material`, `lens_index`, `price`, `cost_price`, `stock_quantity`, `image_url`, `status`) VALUES
@@ -244,7 +260,7 @@ INSERT INTO `product_variants` (`id`, `product_id`, `sku`, `barcode`, `name`, `c
 (19, 15, 'ACC-BOX-LEATHER', '893850123419', 'Hộp Đựng Kính Da Khâu Tay Chống Sốc', 'Nâu bò', NULL, 'Da PU', NULL, 180000, 75000, 150, 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500', 'ACTIVE'),
 (20, 15, 'ACC-NANO-SPRAY', '893850123420', 'Chai Xịt Nano Kháng Khuẩn & Chống Bám Bụi (60ml)', 'Trong suốt', NULL, 'Dung dịch nano', NULL, 95000, 35000, 300, 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500', 'ACTIVE'),
 (21, 15, 'ACC-MICRO-CLOTH', '893850123421', 'Khăn Lau Kính Microfiber Nhãn Khoa Cao Cấp', 'Xanh navy', NULL, 'Sợi Microfiber', NULL, 35000, 12000, 500, 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500', 'ACTIVE')
-ON DUPLICATE KEY UPDATE `price` = VALUES(`price`), `cost_price` = VALUES(`cost_price`), `stock_quantity` = VALUES(`stock_quantity`);
+ON DUPLICATE KEY UPDATE `id` = `id`;
 
 
 -- ==============================================================================
@@ -255,6 +271,8 @@ USE `db_lab`;
 CREATE TABLE IF NOT EXISTS `prescriptions` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `customer_id` BIGINT NOT NULL,
+    `customer_name` VARCHAR(255),
+    `optometrist_name` VARCHAR(255),
     `optometrist_id` BIGINT NOT NULL,
     `od_sph` DECIMAL(4, 2) NOT NULL,     -- Mắt phải (OD) - Độ cầu
     `od_cyl` DECIMAL(4, 2) DEFAULT 0.00, -- Độ loạn
@@ -273,12 +291,20 @@ CREATE TABLE IF NOT EXISTS `prescriptions` (
 
 CREATE TABLE IF NOT EXISTS `lab_jobs` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `idempotency_key` VARCHAR(100) NOT NULL UNIQUE,
+    `order_item_id` BIGINT,
     `order_id` BIGINT NOT NULL,
-    `prescription_id` BIGINT NOT NULL,
-    `frame_sku` VARCHAR(100) NOT NULL,
-    `lens_sku` VARCHAR(100) NOT NULL,
+    `order_code` VARCHAR(60),
+    `tray_number` VARCHAR(60),
+    `customer_name` VARCHAR(255),
+    `prescription_id` BIGINT,
+    `sku` VARCHAR(100),
+    `frame_sku` VARCHAR(255),
+    `frame_name` VARCHAR(255),
+    `lens_sku` VARCHAR(255),
+    `lens_name` VARCHAR(255),
     `technician_id` BIGINT,
-    `status` ENUM('WAITING_PROCESS', 'IN_PROGRESS', 'QC_CHECK', 'QC_PASSED', 'QC_FAILED', 'READY_FOR_DELIVERY') DEFAULT 'WAITING_PROCESS',
+    `status` VARCHAR(50) NOT NULL DEFAULT 'CREATED',
     `qc_notes` VARCHAR(500),
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -299,17 +325,16 @@ INSERT INTO `prescriptions` (`id`, `customer_id`, `optometrist_id`, `od_sph`, `o
 (5, 14, 7, 0.00, 0.00, 0, 0.00, 0.00, 0.00, 0, 0.00, 65.0, 'Mắt chính thị 10/10, mua kính mát thể thao Oakley Holbrook đi phượt và chống bụi'),
 -- 6. Đỗ Quỳnh Anh (Cận nhẹ học sinh)
 (6, 10, 7, -1.50, 0.00, 0, 0.00, -1.25, 0.00, 0, 0.00, 60.5, 'Cận thị học đường, khuyên dùng tròng đổi màu Transitions bảo vệ võng mạc')
-ON DUPLICATE KEY UPDATE `od_sph` = VALUES(`od_sph`), `notes` = VALUES(`notes`);
+ON DUPLICATE KEY UPDATE `id` = `id`;
 
 -- Nạp Lệnh gia công xưởng Lab mẫu trong các giai đoạn vận hành
-INSERT INTO `lab_jobs` (`id`, `order_id`, `prescription_id`, `frame_sku`, `lens_sku`, `technician_id`, `status`, `qc_notes`) VALUES
-(1, 1001, 1, 'FRM-BOLON-BJ3120-BLK', 'LNS-ESS-CRIZAL-167', 8, 'IN_PROGRESS', 'KTV Trần Văn Bách đang vận hành máy mài Essilor Kappa vát cạnh gọng Bolon'),
-(2, 1002, 2, 'FRM-RB-AVIATOR-GLD', 'LNS-CHEMI-U2-160', 8, 'QC_PASSED', 'Kiểm tra tâm quang học đạt chuẩn ANSI Z80.1, hoàn tất bao gói và chuyển shipper AhaMove'),
-(3, 1003, 3, 'FRM-CHARMANT-ZT2233', 'LNS-CHEMI-U6-174', 8, 'WAITING_PROCESS', 'Đang chờ BS. Vũ Anh Tuấn ký xác nhận duyệt lệnh mài tròng chiết suất 1.74 do PD = 69mm'),
-(4, 1004, 4, 'FRM-BOLON-BJ7150-ROSE', 'LNS-ESS-VARILUX-160', 9, 'QC_CHECK', 'Đo đối chiếu thông số đa tròng Varilux trên máy chấm tâm điện tử Nidek LM-1800'),
-(5, 1005, 5, 'SUN-OAK-HOLBROOK-BLU', 'SUN-OAK-HOLBROOK-BLU', 9, 'READY_FOR_DELIVERY', 'Kính râm nguyên hộp tem chính hãng, bàn giao quầy trả hàng Flagship Q.1'),
-(6, 1006, 6, 'FRM-GM-SOUTHSIDE-BLK', 'LNS-ESS-TRANS-156', 8, 'QC_PASSED', 'Mài lắp hoàn hảo, kiểm tra lực xiết ốc bản lề 0.18 N.m đạt chuẩn Bench Alignment')
-ON DUPLICATE KEY UPDATE `status` = VALUES(`status`), `qc_notes` = VALUES(`qc_notes`);
+INSERT INTO `lab_jobs` (`id`, `idempotency_key`, `order_item_id`, `order_id`, `prescription_id`, `frame_sku`, `lens_sku`, `technician_id`, `status`, `qc_notes`) VALUES
+(1, 'LAB_REQ_1001_2', 2, 1001, 1, 'FRM-BOLON-BJ3120-BLK', 'LNS-ESS-CRIZAL-167', 8, 'IN_PROGRESS', 'KTV Trần Văn Bách đang vận hành máy mài Essilor Kappa vát cạnh gọng Bolon'),
+(2, 'LAB_REQ_1002_4', 4, 1002, 2, 'FRM-RB-AVIATOR-GLD', 'LNS-CHEMI-U2-160', 8, 'QC_PASSED', 'Kiểm tra tâm quang học đạt chuẩn ANSI Z80.1, hoàn tất bao gói và chuyển shipper AhaMove'),
+(3, 'LAB_REQ_1003_6', 6, 1003, 3, 'FRM-CHARMANT-ZT2233', 'LNS-CHEMI-U6-174', 8, 'WAITING_PROCESS', 'Đang chờ BS. Vũ Anh Tuấn ký xác nhận duyệt lệnh mài tròng chiết suất 1.74 do PD = 69mm'),
+(4, 'LAB_REQ_1004_8', 8, 1004, 4, 'FRM-BOLON-BJ7150-ROSE', 'LNS-ESS-VARILUX-160', 9, 'QC_CHECK', 'Đo đối chiếu thông số đa tròng Varilux trên máy chấm tâm điện tử Nidek LM-1800'),
+(6, 'LAB_REQ_1006_12', 12, 1006, 6, 'FRM-GM-SOUTHSIDE-BLK', 'LNS-ESS-TRANS-156', 8, 'QC_PASSED', 'Mài lắp hoàn hảo, kiểm tra lực xiết ốc bản lề 0.18 N.m đạt chuẩn Bench Alignment')
+ON DUPLICATE KEY UPDATE `id` = `id`;
 
 
 -- ==============================================================================
@@ -324,6 +349,11 @@ CREATE TABLE IF NOT EXISTS `orders` (
     `customer_name` VARCHAR(100) NOT NULL,
     `customer_phone` VARCHAR(20) NOT NULL,
     `shipping_address` VARCHAR(255),
+    `branch_code` VARCHAR(32),
+    `branch_name` VARCHAR(120),
+    `payment_method` VARCHAR(20),
+    `prescription_id` BIGINT,
+    `tax_amount` DECIMAL(12,2) DEFAULT 0,
     `channel` ENUM('ONLINE', 'POS') DEFAULT 'ONLINE',
     `order_type` ENUM('FRAME_ONLY', 'LENS_ONLY', 'COMPLETE_GLASSES', 'ACCESSORY') DEFAULT 'COMPLETE_GLASSES',
     `total_amount` DECIMAL(12, 2) NOT NULL,
@@ -372,11 +402,11 @@ INSERT INTO `orders` (`id`, `order_code`, `customer_id`, `customer_name`, `custo
 (1004, 'OPT-8835-HN', 13, 'Phạm Thị Bích Ngọc', '0977898332', '24 Tràng Tiền, Hoàn Kiếm, Hà Nội', 'POS', 'COMPLETE_GLASSES', 12500000, 0, 12500000, 'PREPARING'),
 
 -- 5. Đơn Online App - Khách Đỗ Tuấn Kiệt (Kính mát Oakley)
-(1005, 'OPT-8830-ONL', 14, 'Đỗ Tuấn Kiệt', '0938552191', '52 Đường số 7, KDC An Phú, TP. Thủ Đức', 'ONLINE', 'COMPLETE_GLASSES', 3950000, 0, 3950000, 'PAID'),
+(1005, 'OPT-8830-ONL', 14, 'Đỗ Tuấn Kiệt', '0938552191', '52 Đường số 7, KDC An Phú, TP. Thủ Đức', 'ONLINE', 'FRAME_ONLY', 3950000, 0, 3950000, 'PENDING_PAYMENT'),
 
 -- 6. Đơn POS Flagship Q.1 - Khách Đỗ Quỳnh Anh (Combo Gọng + Tròng đổi màu)
 (1006, 'OPT-8825-POS', 10, 'Đỗ Quỳnh Anh', '0909123456', 'Nhận trực tiếp tại Showroom Q.1', 'POS', 'COMPLETE_GLASSES', 5230000, 0, 5230000, 'COMPLETED')
-ON DUPLICATE KEY UPDATE `final_amount` = VALUES(`final_amount`), `status` = VALUES(`status`);
+ON DUPLICATE KEY UPDATE `id` = `id`;
 
 -- Nạp Chi tiết các sản phẩm trong đơn hàng (Order Items)
 INSERT INTO `order_items` (`id`, `order_id`, `sku_id`, `product_name`, `prescription_id`, `quantity`, `unit_price`, `subtotal`) VALUES
@@ -398,12 +428,12 @@ INSERT INTO `order_items` (`id`, `order_id`, `sku_id`, `product_name`, `prescrip
 (9, 1004, 'FRM-CHARMANT-ZT2233', 'Gọng Charmant Titanium Z Dự Phòng', NULL, 1, 3200000, 3200000),
 
 -- Đơn 1005 (Đỗ Tuấn Kiệt)
-(10, 1005, 'SUN-OAK-HOLBROOK-BLU', 'Kính Mát Oakley Holbrook Prizm Sapphire', 5, 1, 3950000, 3950000),
+(10, 1005, 'SUN-OAK-HOLBROOK-BLU', 'Kính Mát Oakley Holbrook Prizm Sapphire', NULL, 1, 3950000, 3950000),
 
 -- Đơn 1006 (Đỗ Quỳnh Anh)
 (11, 1006, 'FRM-GM-SOUTHSIDE-BLK', 'Gọng Gentle Monster TR90 - Đen Bóng', 6, 1, 1850000, 1850000),
 (12, 1006, 'LNS-ESS-TRANS-156', 'Cặp Tròng Essilor Transitions Gen 8 1.56', 6, 1, 3380000, 3380000)
-ON DUPLICATE KEY UPDATE `subtotal` = VALUES(`subtotal`);
+ON DUPLICATE KEY UPDATE `id` = `id`;
 
 -- Nạp Giao dịch thanh toán (Payments)
 INSERT INTO `payments` (`id`, `order_id`, `payment_method`, `transaction_code`, `amount`, `status`) VALUES
@@ -413,4 +443,23 @@ INSERT INTO `payments` (`id`, `order_id`, `payment_method`, `transaction_code`, 
 (4, 1004, 'VNPAY', 'POS-BIDV-883501', 12500000, 'SUCCESS'),
 (5, 1005, 'COD', 'COD-AHA-883012', 3950000, 'PENDING'),
 (6, 1006, 'CASH', 'CASH-POS-882501', 5230000, 'SUCCESS')
-ON DUPLICATE KEY UPDATE `amount` = VALUES(`amount`), `status` = VALUES(`status`);
+ON DUPLICATE KEY UPDATE `id` = `id`;
+
+-- Fill display metadata from the same canonical identities and order records.
+UPDATE db_order.orders o JOIN db_identity.users u ON u.id=o.customer_id
+SET o.customer_name=u.full_name, o.customer_phone=u.phone_number;
+UPDATE db_lab.prescriptions p JOIN db_identity.users c ON c.id=p.customer_id
+JOIN db_identity.users d ON d.id=p.optometrist_id
+SET p.customer_name=c.full_name, p.optometrist_name=d.full_name;
+
+UPDATE db_order.orders o
+SET o.branch_code=CASE WHEN o.channel='POS' THEN IF(o.id=1004,'BRANCH_02','BRANCH_01') ELSE NULL END,
+    o.branch_name=CASE WHEN o.channel='POS' THEN IF(o.id=1004,'Chi nhánh 02 - Tràng Tiền, Hà Nội','Chi nhánh 01 - Lê Thánh Tôn, Quận 1') ELSE NULL END,
+    o.payment_method=(SELECT p.payment_method FROM db_order.payments p WHERE p.order_id=o.id ORDER BY p.id DESC LIMIT 1),
+    o.prescription_id=(SELECT MAX(i.prescription_id) FROM db_order.order_items i WHERE i.order_id=o.id);
+UPDATE db_lab.lab_jobs j JOIN db_order.orders o ON o.id=j.order_id
+LEFT JOIN db_catalog.product_variants f ON f.sku=j.frame_sku
+LEFT JOIN db_catalog.product_variants l ON l.sku=j.lens_sku
+SET j.order_code=o.order_code, j.customer_name=o.customer_name,
+    j.tray_number=CONCAT('KHAY-',o.order_code),j.sku=j.lens_sku,
+    j.frame_name=f.name,j.lens_name=l.name;

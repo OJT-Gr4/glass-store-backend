@@ -21,6 +21,9 @@ import java.util.List;
 @Slf4j
 public class InventoryDataInitializer {
 
+    @org.springframework.beans.factory.annotation.Value("${glassstore.inventory.initial-branch-quantity:0}")
+    private int initialBranchQuantity;
+
     private final InventoryLocationRepository locationRepository;
     private final InventoryBalanceRepository balanceRepository;
     private final ProductVariantRepository variantRepository;
@@ -40,9 +43,14 @@ public class InventoryDataInitializer {
                             variant.getId(), location.getId()));
             for (InventoryLocation location : locations) {
                 if (!balanceRepository.existsByVariant_IdAndLocation_Id(variant.getId(), location.getId())) {
-                    int initialQuantity = !hasBalance && InventoryService.LAB.equals(location.getCode())
-                            ? variant.getStockQuantity()
-                            : 0;
+                    int total = Math.max(0, variant.getStockQuantity());
+                    int firstBranch = Math.min(Math.max(0, initialBranchQuantity), total);
+                    int secondBranch = Math.min(Math.max(0, initialBranchQuantity), total - firstBranch);
+                    int initialQuantity = hasBalance ? 0 : switch (location.getCode()) {
+                        case InventoryService.BRANCH_01 -> firstBranch;
+                        case InventoryService.BRANCH_02 -> secondBranch;
+                        default -> total - firstBranch - secondBranch;
+                    };
                     balanceRepository.save(InventoryBalance.builder()
                             .variant(variant)
                             .location(location)
@@ -51,7 +59,7 @@ public class InventoryDataInitializer {
                 }
             }
         }
-        log.info("Inventory locations initialized; legacy unassigned quantities were preserved at the Lab location.");
+        log.info("Inventory locations initialized according to bootstrap policy; existing balances preserved.");
     }
 
     private InventoryLocation location(String code, String name) {

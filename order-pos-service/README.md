@@ -1,27 +1,11 @@
-# Order POS — local development
+# GlassStore Order/POS Service
 
-The default profile follows the team's in-memory H2 configuration. Use the `local`
-profile to persist POS orders and payments in Docker MySQL `db_order` (port 3307).
+Order, POS, cart, pricing, payment, inventory/Lab dispatch and warranty activation service. Java 21; default listener 8083; schema db_order on the shared MySQL server at 127.0.0.1:3306.
 
-From the backend root, start `docker compose up -d`, then build:
+Use [the backend setup guide](../README.md) and ../.env.example. Do not maintain a separate port/password setup for this module. application-local.yml honors the common DB_HOST/DB_PORT/DB_USERNAME/DB_PASSWORD variables; ORDER_DB_URL and ORDER_DB_USERNAME/ORDER_DB_PASSWORD are deliberate per-service overrides only.
 
-```powershell
-mvn -pl order-pos-service -am install -DskipTests
-mvn -pl order-pos-service package spring-boot:repackage -DskipTests
-java -jar order-pos-service/target/order-pos-service-1.0.0.jar --spring.profiles.active=local
-```
+From backend, START_GLASSSTORE.bat launches all services and both frontends. CHECK_GLASSSTORE.bat checks readiness; STOP_GLASSSTORE.bat stops only launcher-owned application processes. Runtime logs are in backend/.runtime.
 
-Override `ORDER_DB_URL`, `ORDER_DB_USERNAME`, and `ORDER_DB_PASSWORD` in the local
-environment as needed. Hibernate's existing `ddl-auto: update` adds `tax_amount`
-and updates the payment method column to accept external card-terminal sales.
-Never remove the Docker volume when restarting an existing database.
+Canonical SQL demo data is imported only on fresh schemas. Legacy Java sample initializers are disabled by default. H2 is used for isolated tests; do not use a create-drop test profile against MySQL development data.
 
-`POST /api/orders` returns HTTP 201 and the persisted order. POS totals are
-recalculated from item quantities and unit prices, less discount plus the existing
-8% VAT rule. Items and payment are saved in one transaction. Invalid or empty
-orders return HTTP 400. Prices are supplied by the POS's live catalog; server-side
-catalog price verification and inventory deduction are separate work.
-
-Cashiers confirm receipt of cash, bank transfer or external card-terminal payment.
-This endpoint records that confirmation; it does not charge a bank card or verify
-a bank transfer automatically. No fiscal e-invoice is issued by the K80 receipt.
+Online checkout creates a pending payment. A QR code or frontend return page is not proof of payment success. Keep payment/provider status, stock outbox status and Lab status distinct; retry and cancellation must not duplicate side effects. Payment-provider credentials and policy approvals are separate from the local environment setup.

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 
 @Component
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "glassstore.demo.seed.enabled", havingValue = "true")
 @RequiredArgsConstructor
 @Slf4j
 public class CatalogDataInitializer implements CommandLineRunner {

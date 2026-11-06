@@ -20,3 +20,9 @@ out/
 .DS_Store
 Thumbs.db
 
+# Machine-specific configuration and runtime state
+.env
+.env.*
+!.env.example
+.runtime/
+

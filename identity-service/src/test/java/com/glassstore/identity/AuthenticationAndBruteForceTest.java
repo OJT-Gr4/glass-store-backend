@@ -70,6 +70,17 @@ public class AuthenticationAndBruteForceTest {
     }
 
     @Test
+    void commonDemoPasswordsCannotBypassTheStoredHash() throws Exception {
+        for (String rejected : new String[]{"123456", "Password2026@", " CorrectPassword123! "}) {
+            LoginRequest request = LoginRequest.builder()
+                    .email("brute_force_user@example.com").password(rejected).build();
+            mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    @Test
     @DisplayName("1. Đăng nhập khách hàng thành công bằng Email và Mật khẩu")
     void testLoginSuccess() throws Exception {
         LoginRequest request = LoginRequest.builder()

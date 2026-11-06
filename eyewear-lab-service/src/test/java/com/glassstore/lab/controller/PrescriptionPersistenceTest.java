@@ -24,6 +24,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 @org.springframework.security.test.context.support.WithMockUser(username="1", roles="ADMIN")
 class PrescriptionPersistenceTest {
+    @org.springframework.boot.test.mock.mockito.MockBean
+    private com.glassstore.lab.client.PrescriptionCustomerClient customerClient;
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper mapper;
     @Autowired private EntityManager entityManager;
@@ -31,12 +33,15 @@ class PrescriptionPersistenceTest {
 
     @Test
     void savesLensSelectionAndReadsItBackFromCustomerHistory() throws Exception {
+        org.mockito.Mockito.when(customerClient.requireCustomer(90001L)).thenReturn("Test Customer");
         String body = mvc.perform(post("/api/prescriptions").contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"customerId":90001,"optometristId":1,"odSph":-6.25,"osSph":-5.50,
+                     "odCyl":0,"osCyl":0,"odAxis":0,"osAxis":0,"odAdd":0,"osAdd":0,"pd":63,
                      "lensSku":"TEST-U6-174","lensName":"Crystal U6 1.74"}
                     """))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(mapper.readTree(body).path("data").path("optometristId").asLong()).isEqualTo(1L);
         long id = mapper.readTree(body).path("data").path("id").asLong();
         entityManager.flush();
         entityManager.clear();
@@ -62,6 +67,23 @@ class PrescriptionPersistenceTest {
                 .andExpect(jsonPath("$.data[0].id").value(latest.getId().intValue()))
                 .andExpect(jsonPath("$.data[1].id").value(second.getId().intValue()))
                 .andExpect(jsonPath("$.data[2].id").value(first.getId().intValue()));
+    }
+
+    @Test
+    void rejectsMissingMeasurementsAndOutOfRangeValues() throws Exception {
+        for (String body : new String[] {
+            "{\"customerId\":90001}",
+            "{\"customerId\":90001,\"odSph\":31,\"osSph\":0,\"odCyl\":0,\"osCyl\":0,\"odAxis\":0,\"osAxis\":0,\"odAdd\":0,\"osAdd\":0,\"pd\":63}"
+        }) mvc.perform(post("/api/prescriptions").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isBadRequest());
+        org.mockito.Mockito.verifyNoInteractions(customerClient);
+    }
+
+    @Test
+    @org.springframework.security.test.context.support.WithMockUser(username="99", roles="SALES_STAFF")
+    void rejectsUnauthorizedWriter() throws Exception {
+        mvc.perform(post("/api/prescriptions").contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isForbidden());
     }
 
     private Prescription exam(Long customerId, LocalDateTime date) {

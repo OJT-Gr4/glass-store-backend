@@ -27,6 +27,7 @@ class LabAccessSecurityTest {
     @Autowired LabJobRepository jobs;
     @Autowired LabJobHistoryRepository jobHistory;
     @MockBean com.glassstore.lab.config.LabDataInitializer demoSeed;
+    @MockBean com.glassstore.lab.client.PrescriptionCustomerClient customerClient;
     Prescription mine,other;
     Warranty otherWarranty;
     EyeExamAppointment otherAppointment;
@@ -65,8 +66,9 @@ class LabAccessSecurityTest {
             .andExpect(status().isForbidden());
     }
     @Test void doctorIdentityIsTakenFromToken() throws Exception {
+        org.mockito.Mockito.when(customerClient.requireCustomer(10L)).thenReturn("QA");
         mvc.perform(post("/api/prescriptions").with(role("OPTOMETRIST")).contentType("application/json")
-            .content("{\"customerId\":10,\"customerName\":\"QA\",\"optometristId\":999,\"odSph\":0,\"osSph\":0,\"pd\":63}"))
+            .content("{\"customerId\":10,\"customerName\":\"QA\",\"optometristId\":999,\"odSph\":0,\"osSph\":0,\"odCyl\":0,\"osCyl\":0,\"odAxis\":0,\"osAxis\":0,\"odAdd\":0,\"osAdd\":0,\"pd\":63}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.optometristId").value(10));
     }
     @Test void bookingCannotUseAnotherCustomerIdOrOverwriteAnAppointment() throws Exception {
