@@ -2,7 +2,6 @@ package com.glassstore.order.controller;
 
 import com.glassstore.common.dto.ApiResponse;
 import com.glassstore.order.domain.OrderStatus;
-import com.glassstore.order.domain.PaymentMethod;
 import com.glassstore.order.domain.SalesChannel;
 import com.glassstore.order.dto.OrderDtos;
 import com.glassstore.order.entity.Order;
@@ -25,7 +24,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Order API for both the storefront and the internal portal.
@@ -91,7 +89,7 @@ public class OrderController {
             @RequestHeader(value = "X-Customer-Id", required = false) Long customerId) {
         Order order = requireOrder(id);
         com.glassstore.common.security.CurrentActor.requireOwner(order.getCustomerId());
-        order.setInventorySyncStatus(stockDeductionService.statusForOrder(order.getId()));
+        stockDeductionService.inventoryStatus(order);
         return ResponseEntity.ok(ApiResponse.success("OK", order));
     }
 
@@ -142,31 +140,9 @@ public class OrderController {
             ResponseEntity<Order> result = posOrderService.createCounterSale(request, idempotencyKey, token);
             return ResponseEntity.status(result.getStatusCode()).body(ApiResponse.success("Thanh toán tại quầy", result.getBody()));
         }
-        String key = idempotencyKey;
-        if ((key == null || key.isBlank()) && channel == SalesChannel.POS) {
-            key = "POS-" + UUID.randomUUID();
-        }
-
-        OrderCheckoutService.CheckoutOutcome outcome = checkoutService.checkout(request, key);
+        OrderCheckoutService.CheckoutOutcome outcome = checkoutService.checkout(request, idempotencyKey);
         Order order = outcome.order();
         com.glassstore.common.security.CurrentActor.requireOwner(order.getCustomerId());
-
-        // F10 at the counter confirms cash, card, or an in-store QR transfer.
-        if (channel == SalesChannel.POS
-                && order.currentStatus() == OrderStatus.PENDING_PAYMENT
-                && (order.getPaymentMethod() == PaymentMethod.CASH
-                || order.getPaymentMethod() == PaymentMethod.CARD
-                || order.getPaymentMethod() == PaymentMethod.VIETQR)) {
-            String actor = com.glassstore.common.security.CurrentActor.name();
-            if (order.getPaymentMethod() == PaymentMethod.CASH) {
-                order = checkoutService.settleCash(order.getId(), actor);
-            } else {
-                String reason = order.getPaymentMethod() == PaymentMethod.VIETQR
-                        ? "Đã xác nhận nhận tiền chuyển khoản tại quầy"
-                        : "Thu qua máy POS tại quầy";
-                order = checkoutService.markPaid(order, actor, reason, order.getPaymentMethod().name());
-            }
-        }
         if (order.getItems() != null) {
             order.getItems().size();
         }

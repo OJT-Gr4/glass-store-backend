@@ -77,6 +77,8 @@ public final class OrderDtos {
         private String branchCode;
         private Long pointsToUse;
         private BigDecimal cashReceived;
+        private boolean manualPaymentConfirmed;
+        @Size(max = 120) private String paymentReference;
 
         private String notes;
 

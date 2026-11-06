@@ -54,6 +54,10 @@ public class Payment {
 
     @Column(name = "idempotency_key", unique = true, length = 100)
     private String idempotencyKey;
+    @Column(length = 40) private String confirmationMode;
+    @Column(length = 120) private String confirmedBy;
+    private LocalDateTime confirmedAt;
+    @Column(length = 120) private String paymentReference;
 
     /** Gateway name, e.g. VNPAY. Null for CASH, which has no external provider. */
     @Column(name = "provider", length = 40)

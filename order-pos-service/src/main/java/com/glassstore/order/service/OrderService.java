@@ -38,6 +38,7 @@ public class OrderService {
     private final OrderStatusService orderStatusService;
     private final LabDispatchService labDispatchService;
     private final WarrantyActivationService warrantyActivationService;
+    private final CheckoutIdempotencyService idempotency;
 
     @Transactional
     public ResponseEntity<Order> createCounterSale(OrderDtos.CheckoutRequest request, String key, String token) {
@@ -48,7 +49,9 @@ public class OrderService {
                 .branchName(request.getBranchName()).branchCode(request.getBranchCode())
                 .staffName(request.getStaffName()).posSessionId(request.getPosSessionId()).notes(request.getNotes())
                 .voucherCode(request.getVoucherCode()).pointsToUse(request.getPointsToUse())
-                .cashReceived(request.getCashReceived()).items(new ArrayList<>()).build();
+                .cashReceived(request.getCashReceived()).manualPaymentConfirmed(request.isManualPaymentConfirmed())
+                .paymentReference(request.getPaymentReference()).checkoutRequestHash(idempotency.fingerprint(request))
+                .items(new ArrayList<>()).build();
         for (OrderDtos.CheckoutLine line : request.getItems()) {
             order.getItems().add(OrderItem.builder().skuId(line.getSku()).productName(line.getProductName() == null ? line.getSku() : line.getProductName())
                     .quantity(line.getQuantity()).prescriptionId(line.getPrescriptionId()).expectedUnitPrice(line.getExpectedUnitPrice()).build());
@@ -58,19 +61,24 @@ public class OrderService {
 
     @Transactional
     public ResponseEntity<Order> create(Order order, String requestIdempotencyKey, String token) {
-        if (order.getChannel() == SalesChannel.POS) data.actor(token,false);
-        if (requestIdempotencyKey != null) {
-            if (requestIdempotencyKey.isBlank() || requestIdempotencyKey.length() > 100) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Idempotency-Key không hợp lệ.");
-            }
-            Payment existingPayment = paymentRepository.findByIdempotencyKey(requestIdempotencyKey).orElse(null);
-            if (existingPayment != null) {
-                Order existingOrder = orderRepository.findById(existingPayment.getOrderId())
-                        .orElseThrow(() -> new IllegalStateException("Payment exists without its order."));
-                existingOrder.setInventorySyncStatus(stockDeductionService.statusForOrder(existingOrder.getId()));
-                return ResponseEntity.ok(existingOrder);
-            }
+        if (order.getChannel() != SalesChannel.POS) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Đơn online phải dùng luồng checkout chờ thanh toán.");
+        var actor = data.actor(token,false);
+        String actorName = actor.path("username").asText(actor.path("id").asText());
+        var checkout = idempotency.begin(requestIdempotencyKey,
+                order.getCheckoutRequestHash()!=null?order.getCheckoutRequestHash():idempotency.fingerprint(order),
+                "STAFF:" + actor.path("id").asText() + ":" + actorName);
+        if (checkout.getOrderId() != null) {
+            Order previous = orderRepository.findById(checkout.getOrderId()).orElseThrow();
+            previous.setInventorySyncStatus(stockDeductionService.statusForOrder(previous.getId()));
+            return ResponseEntity.ok(previous);
         }
+        if (paymentRepository.findByIdempotencyKey(requestIdempotencyKey).isPresent()
+                || orderRepository.findByIdempotencyKey(requestIdempotencyKey).isPresent())
+            throw com.glassstore.common.exception.ApiException.of(com.glassstore.common.exception.ErrorCode.IDEMPOTENCY_CONFLICT,
+                    "Idempotency-Key thuộc đơn cũ chưa có dấu nội dung. Tra cứu đơn cũ, không thanh toán lại.");
+        if (order.getPaymentMethod()!=PaymentMethod.CASH && !order.isManualPaymentConfirmed())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Thu ngân phải xác nhận đã nhận tiền chuyển khoản/thẻ tại quầy.");
+        order.setStaffName(actorName);
         if (order.getChannel() == SalesChannel.POS) promotions.calculate(order, token, true);
         if (order.getId() != null || order.getItems() == null || order.getItems().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Đơn hàng phải có sản phẩm và không được có ID sẵn.");
@@ -159,8 +167,11 @@ public class OrderService {
                         : UUID.randomUUID().toString())
                 .status(PaymentStatus.SUCCESS)
                 .paidAt(LocalDateTime.now())
+                .confirmationMode(saved.getPaymentMethod()==PaymentMethod.CASH?"CASH_RECEIVED":saved.getPaymentMethod()==PaymentMethod.VIETQR?"MANUAL_TRANSFER":"CARD_TERMINAL")
+                .confirmedBy(actorName).confirmedAt(LocalDateTime.now()).paymentReference(order.getPaymentReference())
                 .build();
         paymentRepository.save(payment);
+        checkout.setOrderId(saved.getId());
         if (saved.getChannel() == SalesChannel.POS && payment.getStatus() == PaymentStatus.SUCCESS) {
             stockDeductionService.enqueue(saved, payment);
             warrantyActivationService.enqueueForPaidOrder(saved);

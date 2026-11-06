@@ -17,6 +17,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByOrderCode(String orderCode);
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select o from Order o where o.orderCode=:code")
+    Optional<Order> lockByOrderCode(@org.springframework.data.repository.query.Param("code") String code);
+
     Optional<Order> findByIdempotencyKey(String idempotencyKey);
 
     List<Order> findAllByOrderByCreatedAtDesc();

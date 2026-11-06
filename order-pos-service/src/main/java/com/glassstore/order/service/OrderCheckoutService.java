@@ -47,16 +47,19 @@ public class OrderCheckoutService {
     private final LabClient labClient;
     private final WarrantyActivationService warrantyActivationService;
     private final LabServiceClient labServiceClient;
+    private final CheckoutIdempotencyService idempotency;
+    private final LabDispatchService labDispatchService;
 
     @Transactional
     public CheckoutOutcome checkout(OrderDtos.CheckoutRequest request, String idempotencyKey) {
         String key = requireIdempotencyKey(idempotencyKey);
+        var claim = idempotency.begin(key,idempotency.fingerprint(request),"CUSTOMER:" + request.getCustomerId());
+        if (claim.getOrderId() != null) return new CheckoutOutcome(orderRepository.findById(claim.getOrderId()).orElseThrow(),true);
 
         Optional<Order> existing = orderRepository.findByIdempotencyKey(key);
         if (existing.isPresent()) {
-            Order order = existing.get();
-            log.info("Checkout replayed for idempotencyKey={} -> order {}", key, order.getOrderCode());
-            return new CheckoutOutcome(order, true);
+            throw ApiException.of(ErrorCode.IDEMPOTENCY_CONFLICT,
+                    "Idempotency-Key thuộc đơn cũ chưa có dấu nội dung. Tra cứu đơn cũ trước khi thử lại.");
         }
 
         PaymentMethod method = PaymentMethod.parse(request.getPaymentMethod());
@@ -151,13 +154,8 @@ public class OrderCheckoutService {
                 .build();
         paymentRepository.save(payment);
 
-        try {
-            inventoryService.reserve(saved);
-        } catch (Exception ex) {
-            log.error("Stock reservation failed for order {}: {}", saved.getOrderCode(), ex.getMessage());
-            orderRepository.delete(saved);
-            throw ex;
-        }
+        claim.setOrderId(saved.getId());
+        inventoryService.reserve(saved);
 
         log.info("Order {} created: {} line(s), final={}, method={}, channel={}",
                 saved.getOrderCode(), saved.getItems().size(), saved.getFinalAmount(), method, channel);
@@ -167,7 +165,7 @@ public class OrderCheckoutService {
 
     @Transactional
     public Order settleCash(Long orderId, String actor) {
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.lockById(orderId)
                 .orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND,
                         "Không tìm thấy đơn hàng ID: " + orderId));
 
@@ -182,20 +180,28 @@ public class OrderCheckoutService {
      * Marks an order paid after a verified payment source (cash staff action or gateway).
      */
     @Transactional
-    public Order markPaid(Order order, String actor, String reason, String provider) {
+    public Order markPaid(Order input, String actor, String reason, String provider) {
+        return markPaid(input,actor,reason,provider,null);
+    }
+
+    @Transactional
+    public Order markPaid(Order input, String actor, String reason, String provider, Long paymentId) {
+        Order order = orderRepository.lockById(input.getId()).orElseThrow();
         if (paymentRepository.existsByOrderIdAndStatus(order.getId(), PaymentStatus.SUCCESS)) {
-            throw ApiException.of(ErrorCode.PAYMENT_ALREADY_SETTLED,
-                    "Đơn hàng " + order.getOrderCode() + " đã được thanh toán");
+            return order;
         }
 
         Payment payment = paymentRepository.findByOrderIdOrderByCreatedAtDesc(order.getId()).stream()
                 .filter(p -> p.getStatus() == PaymentStatus.PENDING)
+                .filter(p -> paymentId == null || paymentId.equals(p.getId()))
                 .findFirst()
                 .orElseThrow(() -> ApiException.of(ErrorCode.PAYMENT_NOT_FOUND,
                         "Không có giao dịch chờ thanh toán cho đơn " + order.getOrderCode()));
 
         payment.setStatus(PaymentStatus.SUCCESS);
         payment.setPaidAt(LocalDateTime.now());
+        payment.setConfirmedBy(actor); payment.setConfirmedAt(LocalDateTime.now());
+        payment.setConfirmationMode("CASH".equals(provider)?"CASH_RECEIVED":"GATEWAY_VERIFIED");
         payment.setUpdatedAt(LocalDateTime.now());
         if (provider != null) {
             payment.setProvider(provider);
@@ -209,7 +215,7 @@ public class OrderCheckoutService {
         Order paid = orderStatusService.transition(order, OrderStatus.PAID, actor, reason);
         inventoryService.onStatusChanged(paid, previous, OrderStatus.PAID);
         warrantyActivationService.enqueueForPaidOrder(paid);
-        dispatchLabJobIfNeeded(paid);
+        labDispatchService.enqueue(paid);
         return paid;
     }
 

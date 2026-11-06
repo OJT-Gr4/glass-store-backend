@@ -65,13 +65,18 @@ public class StockOutboxWorker {
                 catalog.cancelSale(request);
                 cancellations.complete(order.getId());
             } else {
-                catalog.deductPaidOrder(request);
+                var acknowledgement = catalog.deductPaidOrder(request);
+                if (acknowledgement == null || !order.getId().equals(acknowledgement.orderId())) {
+                    throw new IllegalStateException("Kho chưa xác nhận đúng mã đơn đã xuất.");
+                }
             }
             row.setStatus("SYNCED");
             row.setProcessedAt(LocalDateTime.now());
             row.setLastError(null);
         } catch (FeignException error) {
             recordFailure(row, error.getMessage(), isRetryable(error.status()));
+        } catch (RuntimeException error) {
+            recordFailure(row, error.getMessage(), true);
         }
         outboxes.save(row);
         return row.getStatus();

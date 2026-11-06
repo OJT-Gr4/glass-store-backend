@@ -119,6 +119,9 @@ public class Order {
     private LocalDateTime cancelledAt;
     private String refundStatus;
     private BigDecimal cashReceived;
+    @Transient private boolean manualPaymentConfirmed;
+    @Transient private String paymentReference;
+    @Transient @com.fasterxml.jackson.annotation.JsonIgnore private String checkoutRequestHash;
     private String refundConfirmedBy;
     private LocalDateTime refundConfirmedAt;
 
@@ -167,4 +170,6 @@ public class Order {
 
     @Transient
     private String inventorySyncStatus;
+    @Transient private String inventorySyncError;
+    @Transient private String inventorySyncOperation;
 }

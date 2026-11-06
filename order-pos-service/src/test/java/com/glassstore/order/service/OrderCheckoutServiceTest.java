@@ -55,8 +55,11 @@ class OrderCheckoutServiceTest {
         labClient = mock(LabClient.class);
         labServiceClient = mock(LabServiceClient.class);
         warrantyActivationService = mock(WarrantyActivationService.class);
+        CheckoutIdempotencyService idempotency = mock(CheckoutIdempotencyService.class);
+        when(idempotency.fingerprint(any(OrderDtos.CheckoutRequest.class))).thenReturn("hash");
+        when(idempotency.begin(any(),any(),any())).thenAnswer(inv -> new com.glassstore.order.entity.CheckoutRequestRecord());
         service = new OrderCheckoutService(orderRepository, paymentRepository, pricingService,
-                orderStatusService, inventoryService, labClient, warrantyActivationService, labServiceClient);
+                orderStatusService, inventoryService, labClient, warrantyActivationService, labServiceClient,idempotency,mock(LabDispatchService.class));
 
         when(orderRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
         when(orderRepository.findByOrderCode(any())).thenReturn(Optional.empty());
@@ -110,13 +113,11 @@ class OrderCheckoutServiceTest {
     void cashAlreadySettled() {
         Order order = Order.builder().id(1L).orderCode("ORD-X").paymentMethod(PaymentMethod.CASH)
                 .status(OrderStatus.PENDING_PAYMENT).build();
-        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(orderRepository.lockById(1L)).thenReturn(Optional.of(order));
         when(paymentRepository.existsByOrderIdAndStatus(1L, PaymentStatus.SUCCESS)).thenReturn(true);
 
-        assertThatThrownBy(() -> service.settleCash(1L, "STAFF"))
-                .isInstanceOf(ApiException.class)
-                .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.PAYMENT_ALREADY_SETTLED);
+        assertThat(service.settleCash(1L,"STAFF")).isSameAs(order);
+        verify(paymentRepository,never()).save(any());
     }
 
     @Test

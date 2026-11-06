@@ -4,6 +4,8 @@ import com.glassstore.order.domain.*;
 import com.glassstore.order.client.CatalogInventoryClient;
 import com.glassstore.order.dto.CatalogStockDeductionRequest;
 import com.glassstore.order.entity.Order;
+import com.glassstore.order.entity.OrderInventoryTask;
+import com.glassstore.order.repository.OrderInventoryTaskRepository;
 import com.glassstore.order.entity.Payment;
 import com.glassstore.order.entity.StockDeductionOutbox;
 import com.glassstore.order.repository.OrderRepository;
@@ -34,6 +36,7 @@ public class StockDeductionService {
     private final CatalogInventoryClient catalogInventoryClient;
     private final ApplicationEventPublisher eventPublisher;
     private final StockOutboxWorker worker;
+    private final OrderInventoryTaskRepository reservationTasks;
 
     public void enqueue(Order order, Payment payment) {
         StockDeductionOutbox outbox = outboxRepository.save(StockDeductionOutbox.builder()
@@ -61,13 +64,52 @@ public class StockDeductionService {
     public String statusForOrder(Long orderId) {
         return outboxRepository.findByOrderId(orderId)
                 .map(StockDeductionOutbox::getStatus)
-                .orElse("NOT_REQUIRED");
+                .orElseGet(() -> reservationTasks.findById(orderId).map(OrderInventoryTask::getStatus).orElse("NOT_REQUIRED"));
+    }
+
+    public Order inventoryStatus(Order order) {
+        outboxRepository.findByOrderId(order.getId()).ifPresentOrElse(
+                row -> setInventoryStatus(order, row.getStatus(), row.getLastError(), row.getOperation()),
+                () -> reservationTasks.findById(order.getId()).ifPresent(
+                        task -> setInventoryStatus(order, task.getStatus(), task.getLastError(), task.getOperation())));
+        if (order.getInventorySyncStatus() == null) {
+            order.setInventorySyncStatus(InventorySyncStatus.NOT_REQUIRED);
+        }
+        return order;
+    }
+
+    private void setInventoryStatus(Order order, String status, String error, String operation) {
+        order.setInventorySyncStatus(status);
+        order.setInventorySyncError(error);
+        order.setInventorySyncOperation(operation);
+    }
+
+    private Order retryReservation(Order order) {
+        OrderInventoryTask task = reservationTasks.lockByOrderId(order.getId()).orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.CONFLICT, "Đơn không có yêu cầu đồng bộ kho."));
+        if (InventorySyncStatus.RECONCILIATION_REQUIRED.equals(task.getStatus())
+                && InventoryOperation.RELEASE.equals(task.getOperation())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cần đối soát giữ/xuất kho và bù trừ trước; không tự cộng tồn.");
+        }
+        if (!InventorySyncStatus.SYNCED.equals(task.getStatus())) {
+            task.setStatus(InventorySyncStatus.PENDING);
+            task.setAttempts(0);
+            task.setLastError(null);
+            reservationTasks.save(task);
+            eventPublisher.publishEvent(new OrderInventoryDispatcher.Requested(order.getId()));
+        }
+        return inventoryStatus(order);
     }
 
     @Transactional
     public Order retry(Long orderId, String branchCode) {
         Order order = orderRepository.lockById(orderId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-        StockDeductionOutbox outbox = outboxRepository.findByOrderId(orderId).orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Đơn không có yêu cầu đồng bộ kho."));
+        var existing = outboxRepository.findByOrderId(orderId);
+        if (existing.isEmpty()) {
+            return retryReservation(order);
+        }
+        StockDeductionOutbox outbox = existing.get();
         if (!(order.getChannel() == SalesChannel.POS) || !(order.getStatus() == OrderStatus.PAID)) throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ đồng bộ đơn POS đã thanh toán.");
         if ("SYNCED".equals(outbox.getStatus())) {
             order.setInventorySyncStatus("SYNCED");

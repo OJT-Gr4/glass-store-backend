@@ -54,7 +54,8 @@ class PosBenefitsIntegrationTest {
         assertEquals(100,accounts.findById(10L).orElseThrow().getBalance());assertEquals(0,vouchers.findByCode("QA10").orElseThrow().getUsedCount());
         Order saved=orders.create(request,"QA-payment-1","Bearer test").getBody();
         assertEquals(50,accounts.findById(10L).orElseThrow().getBalance());assertEquals(1,vouchers.findByCode("QA10").orElseThrow().getUsedCount());
-        assertEquals(saved.getId(),orders.create(order(),"QA-payment-1","Bearer test").getBody().getId());
+        Order replay=order();replay.setVoucherCode("QA10");replay.setPointsToUse(50L);replay.setCashReceived(new BigDecimal("2000000"));
+        assertEquals(saved.getId(),orders.create(replay,"QA-payment-1","Bearer test").getBody().getId());
         assertEquals(1,payments.findByOrderId(saved.getId()).size());assertEquals(50,accounts.findById(10L).orElseThrow().getBalance());
         cancellations.cancel(saved.getId(),new OrderCancellationService.Request("Khách đổi ý",false),"Bearer test");
         cancellations.complete(saved.getId());cancellations.complete(saved.getId());

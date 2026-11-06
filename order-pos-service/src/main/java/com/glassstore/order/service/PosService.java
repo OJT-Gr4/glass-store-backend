@@ -30,7 +30,7 @@ public class PosService {
     private final PosSessionRepository sessionRepository;
     private final OrderRepository orderRepository;
     private final BasketPricingService pricingService;
-    private final OrderCheckoutService checkoutService;
+    private final OrderService counterSales;
 
     @Transactional
     public PosSession openSession(String staffName, String branchName) {
@@ -81,7 +81,7 @@ public class PosService {
     }
 
     @Transactional
-    public OrderCheckoutService.CheckoutOutcome checkout(OrderDtos.CheckoutRequest request, String idempotencyKey) {
+    public OrderCheckoutService.CheckoutOutcome checkout(OrderDtos.CheckoutRequest request, String idempotencyKey,String token) {
         PosSession session = requireOpen(request.getPosSessionId(), true);
         request.setChannel(SalesChannel.POS.name());
         request.setStaffName(session.getStaffName());
@@ -90,20 +90,8 @@ public class PosService {
             request.setPaymentMethod(PaymentMethod.CASH.name());
         }
 
-        String key = idempotencyKey == null || idempotencyKey.isBlank()
-                ? "POS-" + session.getId() + "-" + UUID.randomUUID()
-                : idempotencyKey;
-        OrderCheckoutService.CheckoutOutcome outcome = checkoutService.checkout(request, key);
-        if (outcome.replayed()) {
-            return outcome;
-        }
-
-        PaymentMethod method = PaymentMethod.parse(request.getPaymentMethod());
-        if (method == PaymentMethod.CASH) {
-            Order paid = checkoutService.settleCash(outcome.order().getId(), session.getStaffName());
-            return new OrderCheckoutService.CheckoutOutcome(paid, false);
-        }
-        return outcome;
+        var response=counterSales.createCounterSale(request,idempotencyKey,token);
+        return new OrderCheckoutService.CheckoutOutcome(response.getBody(),response.getStatusCode().value()==200);
     }
 
     public List<Order> salesHistory() {
