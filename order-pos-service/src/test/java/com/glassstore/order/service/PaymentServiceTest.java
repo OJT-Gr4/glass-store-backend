@@ -38,6 +38,8 @@ class PaymentServiceTest {
         paymentGateway = mock(PaymentGateway.class);
         checkoutService = mock(OrderCheckoutService.class);
         orderStatusService = mock(OrderStatusService.class);
+        when(orderRepository.lockById(any())).thenAnswer(inv -> orderRepository.findByOrderCode("ORD-1").or(() -> orderRepository.findById(inv.getArgument(0))));
+        when(orderRepository.lockByOrderCode(any())).thenAnswer(inv -> orderRepository.findByOrderCode(inv.getArgument(0)));
         service = new PaymentService(paymentRepository, orderRepository, paymentGateway,
                 checkoutService, orderStatusService);
     }
@@ -57,6 +59,7 @@ class PaymentServiceTest {
                 true, "TEST", "txn-1", "ORD-1", new BigDecimal("10.00"), true, "ok"));
         when(paymentRepository.findByProviderAndExternalTransactionId("TEST", "txn-1"))
                 .thenReturn(Optional.of(existing));
+        when(orderRepository.findByOrderCode("ORD-1")).thenReturn(Optional.of(Order.builder().id(1L).orderCode("ORD-1").build()));
 
         PaymentService.CallbackOutcome outcome = service.handleCallback("body", "sig");
 

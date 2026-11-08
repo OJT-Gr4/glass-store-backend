@@ -39,6 +39,9 @@ public class LabJob {
     @Column(name = "prescription_id")
     private Long prescriptionId;
 
+    @Embedded
+    private LabPrescriptionSnapshot prescriptionSnapshot;
+
     @Column(name = "customer_name")
     private String customerName;
 
@@ -74,6 +77,17 @@ public class LabJob {
     @Column(name = "qc_notes", length = 500)
     private String qcNotes;
 
+    @Column(name = "qc_result", length = 20)
+    private String qcResult;
+
+    @Column(name = "rework_count")
+    @Builder.Default
+    private Integer reworkCount = 0;
+
+    @Column(name = "material_damaged")
+    @Builder.Default
+    private Boolean materialDamaged = false;
+
     @Column(name = "started_at")
     private LocalDateTime startedAt;
 
@@ -98,6 +112,12 @@ public class LabJob {
         }
         if (this.status == null) {
             this.status = LabJobStatus.CREATED;
+        }
+        if (this.reworkCount == null) {
+            this.reworkCount = 0;
+        }
+        if (this.materialDamaged == null) {
+            this.materialDamaged = false;
         }
         if (this.idempotencyKey == null || this.idempotencyKey.isBlank()) {
             this.idempotencyKey = "LAB_REQ_" + (this.orderId != null ? this.orderId : "0")

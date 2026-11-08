@@ -38,6 +38,9 @@ class LabDispatchRecoveryTest {
     @BeforeEach void prepare() throws Exception {
         stockOutbox.deleteAll(); outbox.deleteAll(); history.deleteAll(); payments.deleteAll(); orderRepository.deleteAll();
         when(data.actor(any(),anyBoolean())).thenReturn(new ObjectMapper().readTree("{\"id\":1,\"roles\":[\"ROLE_ADMIN\"]}"));
+        when(data.requirePrescription(eq(7L),eq(10L),any())).thenReturn(new ObjectMapper().readTree("""
+                {"id":7,"version":0,"customerId":10,"odSph":-2,"odCyl":0,"odAxis":0,"odAdd":0,"osSph":-2,"osCyl":0,"osAxis":0,"osAdd":0,"pd":63}
+                """));
         when(data.catalogItems()).thenReturn(Map.of("FRM-QA", new PosDataService.CatalogItem(new BigDecimal("1000000"), "QA frame", "FRAME", true),
                 "LNS-QA", new PosDataService.CatalogItem(new BigDecimal("500000"), "QA lens", "LENS", true)));
         when(stockWorker.process(anyLong())).thenReturn("SYNCED");
@@ -63,6 +66,7 @@ class LabDispatchRecoveryTest {
         assertEquals(1,outbox.count()); assertEquals(1,orderRepository.count()); assertEquals(1,payments.count());
         verify(lab,times(2)).createFromOrder(argThat(payload -> saved.getId().equals(payload.get("orderId"))
             && Long.valueOf(7).equals(payload.get("prescriptionId")) && "LNS-QA".equals(payload.get("lensSku"))
+            && Long.valueOf(0).equals(payload.get("prescriptionVersion"))
             && Long.valueOf(10).equals(payload.get("customerId")) && payload.get("orderItemId") != null
             && ("LAB_REQ_" + saved.getId() + "_" + payload.get("orderItemId")).equals(payload.get("idempotencyKey"))));
     }

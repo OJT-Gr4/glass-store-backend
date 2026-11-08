@@ -43,6 +43,9 @@ public class LabDispatchWorker {
                 Map<String,Object> payload = new LinkedHashMap<>();
                 payload.put("orderId", order.getId()); payload.put("orderItemId", item.getId());
                 payload.put("prescriptionId", item.getPrescriptionId() != null ? item.getPrescriptionId() : order.getPrescriptionId());
+                if (order.getPrescription() == null || !"CLINICAL_REVISION".equals(order.getPrescription().getSource()))
+                    throw new IllegalStateException("Đơn chưa chốt phiên bản toa kính; cần đối soát trước khi gửi Lab");
+                payload.put("prescriptionVersion", order.getPrescription().getVersion());
                 payload.put("idempotencyKey", "LAB_REQ_" + order.getId() + "_" + item.getId());
                 payload.put("orderCode", order.getOrderCode()); payload.put("customerId", order.getCustomerId());
                 payload.put("customerName", order.getCustomerName()); payload.put("sku", item.getSkuId());

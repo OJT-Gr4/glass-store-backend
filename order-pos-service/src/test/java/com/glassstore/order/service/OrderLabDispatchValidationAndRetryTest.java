@@ -104,6 +104,9 @@ class OrderLabDispatchValidationAndRetryTest {
         completeRxData.put("osCyl", new BigDecimal("-0.50"));
         completeRxData.put("osAxis", 85);
         completeRxData.put("pd", new BigDecimal("63.5"));
+        completeRxData.put("odAdd", BigDecimal.ZERO);
+        completeRxData.put("osAdd", BigDecimal.ZERO);
+        completeRxData.put("version", 0L);
     }
 
     @Nested

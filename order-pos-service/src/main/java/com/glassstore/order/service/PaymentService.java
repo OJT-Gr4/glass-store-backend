@@ -44,7 +44,7 @@ public class PaymentService {
 
     @Transactional
     public PaymentGateway.InitiationResult initiate(Long orderId) {
-        Order order = requireOrder(orderId);
+        Order order = orderRepository.lockById(orderId).orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND));
         if (paymentRepository.existsByOrderIdAndStatus(orderId, PaymentStatus.SUCCESS)) {
             throw ApiException.of(ErrorCode.PAYMENT_ALREADY_SETTLED,
                     "Đơn hàng " + order.getOrderCode() + " đã được thanh toán");
@@ -88,16 +88,16 @@ public class PaymentService {
                     "Chữ ký xác thực thanh toán không hợp lệ");
         }
 
+        Order order = orderRepository.lockByOrderCode(verified.orderCode())
+                .orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND,"Không tìm thấy đơn hàng: " + verified.orderCode()));
         Optional<Payment> existing = paymentRepository.findByProviderAndExternalTransactionId(
                 verified.provider(), verified.externalTransactionId());
+        if (existing.isPresent() && !order.getId().equals(existing.get().getOrderId()))
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR,"Mã giao dịch thuộc đơn hàng khác.");
         if (existing.isPresent() && existing.get().getStatus() == PaymentStatus.SUCCESS) {
             log.info("Duplicate payment callback ignored for txn {}", verified.externalTransactionId());
             return new CallbackOutcome(existing.get(), true);
         }
-
-        Order order = orderRepository.findByOrderCode(verified.orderCode())
-                .orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND,
-                        "Không tìm thấy đơn hàng: " + verified.orderCode()));
 
         if (paymentRepository.existsByOrderIdAndStatus(order.getId(), PaymentStatus.SUCCESS)) {
             throw ApiException.of(ErrorCode.PAYMENT_ALREADY_SETTLED,
@@ -126,7 +126,8 @@ public class PaymentService {
             return new CallbackOutcome(failed, false);
         }
 
-        Payment pending = paymentRepository.findByOrderIdOrderByCreatedAtDesc(order.getId()).stream()
+        final Long lockedOrderId=order.getId();
+        Payment pending = existing.orElseGet(() -> paymentRepository.findByOrderIdOrderByCreatedAtDesc(lockedOrderId).stream()
                 .filter(p -> p.getStatus() == PaymentStatus.PENDING)
                 .findFirst()
                 .orElseGet(() -> Payment.builder()
@@ -134,13 +135,13 @@ public class PaymentService {
                         .paymentMethod(order.getPaymentMethod())
                         .amount(order.getFinalAmount())
                         .status(PaymentStatus.PENDING)
-                        .build());
+                        .build()));
         pending.setProvider(verified.provider());
         pending.setExternalTransactionId(verified.externalTransactionId());
         pending.setStatus(PaymentStatus.PENDING);
         paymentRepository.save(pending);
 
-        checkoutService.markPaid(order, "GATEWAY", "Xác thực callback cổng thanh toán", verified.provider());
+        checkoutService.markPaid(order, "GATEWAY", "Xác thực callback cổng thanh toán", verified.provider(), pending.getId());
         Payment success = paymentRepository.findFirstByOrderIdAndStatus(order.getId(), PaymentStatus.SUCCESS)
                 .orElseThrow(() -> ApiException.of(ErrorCode.PAYMENT_NOT_FOUND, "Không ghi nhận được thanh toán"));
         success.setExternalTransactionId(verified.externalTransactionId());

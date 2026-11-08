@@ -47,16 +47,19 @@ public class OrderCheckoutService {
     private final LabClient labClient;
     private final WarrantyActivationService warrantyActivationService;
     private final LabServiceClient labServiceClient;
+    private final CheckoutIdempotencyService idempotency;
+    private final LabDispatchService labDispatchService;
 
     @Transactional
     public CheckoutOutcome checkout(OrderDtos.CheckoutRequest request, String idempotencyKey) {
         String key = requireIdempotencyKey(idempotencyKey);
+        var claim = idempotency.begin(key,idempotency.fingerprint(request),"CUSTOMER:" + request.getCustomerId());
+        if (claim.getOrderId() != null) return new CheckoutOutcome(orderRepository.findById(claim.getOrderId()).orElseThrow(),true);
 
         Optional<Order> existing = orderRepository.findByIdempotencyKey(key);
         if (existing.isPresent()) {
-            Order order = existing.get();
-            log.info("Checkout replayed for idempotencyKey={} -> order {}", key, order.getOrderCode());
-            return new CheckoutOutcome(order, true);
+            throw ApiException.of(ErrorCode.IDEMPOTENCY_CONFLICT,
+                    "Idempotency-Key thuộc đơn cũ chưa có dấu nội dung. Tra cứu đơn cũ trước khi thử lại.");
         }
 
         PaymentMethod method = PaymentMethod.parse(request.getPaymentMethod());
@@ -127,6 +130,17 @@ public class OrderCheckoutService {
                     .osSph(rx.getOsSph()).osCyl(rx.getOsCyl()).osAxis(rx.getOsAxis()).osAdd(rx.getOsAdd())
                     .pd(rx.getPd()).source("CUSTOMER_PROVIDED").customerConfirmedAt(LocalDateTime.now()).build());
         }
+        if (request.getPrescriptionId() != null) {
+            try {
+                var response = labServiceClient.getPrescriptionById(request.getPrescriptionId());
+                Object data = response == null || response.getBody() == null ? null : response.getBody().get("data");
+                @SuppressWarnings("unchecked") Map<String, Object> values = data instanceof Map<?, ?> ? (Map<String, Object>) data : null;
+                order.setPrescription(ClinicalPrescriptionSnapshot.from(values, request.getPrescriptionId(), order.getCustomerId()));
+            } catch (feign.FeignException error) {
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                        "Không xác minh được phiên bản toa kính; chưa tạo đơn.");
+            }
+        }
         for (OrderDtos.OrderItemSnapshot line : basket.getLines()) {
             order.getItems().add(OrderItem.builder()
                     .order(order)
@@ -151,13 +165,8 @@ public class OrderCheckoutService {
                 .build();
         paymentRepository.save(payment);
 
-        try {
-            inventoryService.reserve(saved);
-        } catch (Exception ex) {
-            log.error("Stock reservation failed for order {}: {}", saved.getOrderCode(), ex.getMessage());
-            orderRepository.delete(saved);
-            throw ex;
-        }
+        claim.setOrderId(saved.getId());
+        inventoryService.reserve(saved);
 
         log.info("Order {} created: {} line(s), final={}, method={}, channel={}",
                 saved.getOrderCode(), saved.getItems().size(), saved.getFinalAmount(), method, channel);
@@ -167,7 +176,7 @@ public class OrderCheckoutService {
 
     @Transactional
     public Order settleCash(Long orderId, String actor) {
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.lockById(orderId)
                 .orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND,
                         "Không tìm thấy đơn hàng ID: " + orderId));
 
@@ -182,20 +191,28 @@ public class OrderCheckoutService {
      * Marks an order paid after a verified payment source (cash staff action or gateway).
      */
     @Transactional
-    public Order markPaid(Order order, String actor, String reason, String provider) {
+    public Order markPaid(Order input, String actor, String reason, String provider) {
+        return markPaid(input,actor,reason,provider,null);
+    }
+
+    @Transactional
+    public Order markPaid(Order input, String actor, String reason, String provider, Long paymentId) {
+        Order order = orderRepository.lockById(input.getId()).orElseThrow();
         if (paymentRepository.existsByOrderIdAndStatus(order.getId(), PaymentStatus.SUCCESS)) {
-            throw ApiException.of(ErrorCode.PAYMENT_ALREADY_SETTLED,
-                    "Đơn hàng " + order.getOrderCode() + " đã được thanh toán");
+            return order;
         }
 
         Payment payment = paymentRepository.findByOrderIdOrderByCreatedAtDesc(order.getId()).stream()
                 .filter(p -> p.getStatus() == PaymentStatus.PENDING)
+                .filter(p -> paymentId == null || paymentId.equals(p.getId()))
                 .findFirst()
                 .orElseThrow(() -> ApiException.of(ErrorCode.PAYMENT_NOT_FOUND,
                         "Không có giao dịch chờ thanh toán cho đơn " + order.getOrderCode()));
 
         payment.setStatus(PaymentStatus.SUCCESS);
         payment.setPaidAt(LocalDateTime.now());
+        payment.setConfirmedBy(actor); payment.setConfirmedAt(LocalDateTime.now());
+        payment.setConfirmationMode("CASH".equals(provider)?"CASH_RECEIVED":"GATEWAY_VERIFIED");
         payment.setUpdatedAt(LocalDateTime.now());
         if (provider != null) {
             payment.setProvider(provider);
@@ -209,7 +226,7 @@ public class OrderCheckoutService {
         Order paid = orderStatusService.transition(order, OrderStatus.PAID, actor, reason);
         inventoryService.onStatusChanged(paid, previous, OrderStatus.PAID);
         warrantyActivationService.enqueueForPaidOrder(paid);
-        dispatchLabJobIfNeeded(paid);
+        labDispatchService.enqueue(paid);
         return paid;
     }
 
@@ -267,8 +284,9 @@ public class OrderCheckoutService {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Đơn hàng kính thuốc thiếu toa kính (prescriptionId)");
         }
 
-        Map<String, Object> rxMap = null;
-        if (labServiceClient != null) {
+        Map<String, Object> rxMap = order.getPrescription() != null && "CLINICAL_REVISION".equals(order.getPrescription().getSource())
+                ? ClinicalPrescriptionSnapshot.toMap(order.getPrescription(), effectivePrescriptionId, order.getCustomerId()) : null;
+        if (rxMap == null && labServiceClient != null) {
             try {
                 var rxRes = labServiceClient.getPrescriptionById(effectivePrescriptionId);
                 if (rxRes != null && rxRes.getBody() != null) {
@@ -315,6 +333,11 @@ public class OrderCheckoutService {
                     "Toa kính thiếu thông số đo bắt buộc (SPH, CYL, AXIS, PD)");
         }
 
+        if (order.getPrescription() == null) {
+            order.setPrescription(ClinicalPrescriptionSnapshot.from(rxMap, effectivePrescriptionId, order.getCustomerId()));
+            orderRepository.save(order);
+        }
+
         CreateLabJobRequest.PrescriptionDto prescriptionDto = parsePrescriptionDto(rxMap, effectivePrescriptionId);
 
         // 3. Chuẩn bị danh sách yêu cầu gia công (Contract & Idempotency: LAB_REQ_{orderId}_{orderItemId})
@@ -349,6 +372,7 @@ public class OrderCheckoutService {
                     .orderId(order.getId())
                     .orderItemId(defaultItemId)
                     .prescriptionId(effectivePrescriptionId)
+                    .prescriptionVersion(order.getPrescription().getVersion())
                     .sku(defaultSku)
                     .idempotencyKey("LAB_REQ_" + order.getId() + "_" + defaultItemId)
                     .orderCode(order.getOrderCode())
@@ -376,6 +400,7 @@ public class OrderCheckoutService {
                         .orderId(order.getId())
                         .orderItemId(itemId)
                         .prescriptionId(effectivePrescriptionId)
+                    .prescriptionVersion(order.getPrescription().getVersion())
                         .sku(item.getSkuId())
                         .idempotencyKey("LAB_REQ_" + order.getId() + "_" + itemId)
                         .orderCode(order.getOrderCode())
@@ -416,6 +441,10 @@ public class OrderCheckoutService {
                         Map<String, Object> fallbackBody = new LinkedHashMap<>();
                         fallbackBody.put("orderId", req.getOrderId());
                         fallbackBody.put("prescriptionId", req.getPrescriptionId());
+                        fallbackBody.put("prescriptionVersion", req.getPrescriptionVersion());
+                        fallbackBody.put("orderItemId", req.getOrderItemId());
+                        fallbackBody.put("idempotencyKey", req.getIdempotencyKey());
+                        fallbackBody.put("customerId", req.getCustomerId());
                         fallbackBody.put("frameSku", req.getFrameSku());
                         fallbackBody.put("frameName", req.getFrameName());
                         fallbackBody.put("lensSku", req.getLensSku());

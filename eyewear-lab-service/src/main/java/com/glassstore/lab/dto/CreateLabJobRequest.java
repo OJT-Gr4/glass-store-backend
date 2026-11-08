@@ -21,6 +21,7 @@ public class CreateLabJobRequest {
     private Long orderItemId;
 
     private Long prescriptionId;
+    private Long prescriptionVersion;
 
     private String sku;
 

@@ -26,6 +26,7 @@ public class LabJobResponse {
     private String orderCode;
     private String trayNumber;
     private Long prescriptionId;
+    private Long prescriptionVersion;
     private String customerName;
     private String sku;
     private String lensSku;
@@ -38,6 +39,9 @@ public class LabJobResponse {
     private String technicianName;
     private String technicianNotes;
     private String qcNotes;
+    private String qcResult;
+    private Integer reworkCount;
+    private Boolean materialDamaged;
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
     private LocalDateTime createdAt;
@@ -71,6 +75,9 @@ public class LabJobResponse {
         if (job == null) {
             return null;
         }
+        // Existing callers may supply the current prescription. A pinned job always wins.
+        if (job.getPrescriptionSnapshot() != null)
+            rx = job.getPrescriptionSnapshot().asPrescription(job.getPrescriptionId(), job.getCustomerName());
 
         LabJobResponseBuilder builder = LabJobResponse.builder()
                 .id(job.getId())
@@ -80,6 +87,7 @@ public class LabJobResponse {
                 .orderCode(job.getOrderCode())
                 .trayNumber(job.getTrayNumber())
                 .prescriptionId(job.getPrescriptionId())
+                .prescriptionVersion(job.getPrescriptionSnapshot() == null ? null : job.getPrescriptionSnapshot().getVersion())
                 .customerName(job.getCustomerName())
                 .sku(job.getSku())
                 .lensSku(job.getLensSku())
@@ -92,6 +100,9 @@ public class LabJobResponse {
                 .technicianName(job.getTechnicianName())
                 .technicianNotes(job.getTechnicianNotes())
                 .qcNotes(job.getQcNotes())
+                .qcResult(job.getQcResult())
+                .reworkCount(job.getReworkCount() != null ? job.getReworkCount() : 0)
+                .materialDamaged(job.getMaterialDamaged() != null ? job.getMaterialDamaged() : false)
                 .startedAt(job.getStartedAt())
                 .completedAt(job.getCompletedAt())
                 .createdAt(job.getCreatedAt())

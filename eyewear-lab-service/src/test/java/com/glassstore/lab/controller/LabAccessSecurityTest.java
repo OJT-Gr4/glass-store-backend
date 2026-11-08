@@ -37,7 +37,9 @@ class LabAccessSecurityTest {
         jobHistory.deleteAll();jobs.deleteAll();warranties.deleteAll();appointments.deleteAll();prescriptions.deleteAll();
         mine=prescriptions.saveAndFlush(Prescription.builder().customerId(10L).customerName("QA own").optometristId(1L)
             .odSph(BigDecimal.ZERO).odCyl(BigDecimal.ZERO).odAxis(0)
-            .osSph(BigDecimal.ZERO).osCyl(BigDecimal.ZERO).osAxis(0).pd(new BigDecimal("63")).build());
+            .odAdd(BigDecimal.ZERO)
+            .osSph(BigDecimal.ZERO).osCyl(BigDecimal.ZERO).osAxis(0).osAdd(BigDecimal.ZERO)
+            .pd(new BigDecimal("63")).build());
         other=prescriptions.saveAndFlush(Prescription.builder().customerId(20L).customerName("QA other").optometristId(1L).odSph(BigDecimal.ZERO).osSph(BigDecimal.ZERO).pd(new BigDecimal("63")).build());
         otherAppointment=appointments.saveAndFlush(EyeExamAppointment.builder().ticketCode("QA-OTHER").customerId(20L).customerName("QA other").status("WAITING").build());
         otherWarranty=warranties.saveAndFlush(Warranty.builder().warrantyCode("QA-WAR").customerId(20L).customerName("QA other").productName("QA frame").status("ACTIVE").build());
@@ -72,8 +74,9 @@ class LabAccessSecurityTest {
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.optometristId").value(10));
     }
     @Test void bookingCannotUseAnotherCustomerIdOrOverwriteAnAppointment() throws Exception {
+        org.mockito.Mockito.when(customerClient.requireCustomer(10L)).thenReturn("QA verified");
         mvc.perform(post("/api/appointments").with(role("CUSTOMER")).contentType("application/json")
-            .content("{\"id\":"+otherAppointment.getId()+",\"customerId\":20,\"customerName\":\"QA\",\"status\":\"COMPLETED\"}"))
+            .content("{\"id\":"+otherAppointment.getId()+",\"customerId\":20,\"customerName\":\"QA\",\"status\":\"COMPLETED\",\"scheduledTime\":\"2099-11-09T09:00\"}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.customerId").value(10)).andExpect(jsonPath("$.data.status").value("WAITING"));
         org.junit.jupiter.api.Assertions.assertEquals(20L,appointments.findById(otherAppointment.getId()).orElseThrow().getCustomerId());
     }

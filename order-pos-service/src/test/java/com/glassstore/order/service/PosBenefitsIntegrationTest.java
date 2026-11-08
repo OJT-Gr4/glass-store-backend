@@ -38,6 +38,9 @@ class PosBenefitsIntegrationTest {
     @MockBean WarrantyActivationService warrantyActivation;
     @BeforeEach void setup() throws Exception {
         when(data.actor(any(),anyBoolean())).thenReturn(new ObjectMapper().readTree("{\"id\":1,\"username\":\"qa\",\"roles\":[\"ROLE_ADMIN\"]}"));
+        when(data.requirePrescription(eq(7L),eq(10L),any())).thenReturn(new ObjectMapper().readTree("""
+                {"id":7,"version":0,"customerId":10,"odSph":-2,"odCyl":0,"odAxis":0,"odAdd":0,"osSph":-2,"osCyl":0,"osAxis":0,"osAdd":0,"pd":63}
+                """));
         when(data.catalogItems()).thenReturn(Map.of("TEST-SKU", new PosDataService.CatalogItem(new BigDecimal("1000000"), "Catalog lens", "LENS", true),
                 "FRAME-SKU", new PosDataService.CatalogItem(new BigDecimal("500000"), "Catalog frame", "FRAME", true)));
         Voucher v=new Voucher();v.setCode("QA10");v.setName("QA voucher");v.setType("PERCENT");v.setAmount(new BigDecimal("10"));v.setMinimumAmount(new BigDecimal("500000"));v.setMaximumDiscount(new BigDecimal("100000"));v.setUsageLimit(1);v.setExpiresAt(LocalDateTime.now().plusDays(1));vouchers.save(v);
@@ -54,7 +57,8 @@ class PosBenefitsIntegrationTest {
         assertEquals(100,accounts.findById(10L).orElseThrow().getBalance());assertEquals(0,vouchers.findByCode("QA10").orElseThrow().getUsedCount());
         Order saved=orders.create(request,"QA-payment-1","Bearer test").getBody();
         assertEquals(50,accounts.findById(10L).orElseThrow().getBalance());assertEquals(1,vouchers.findByCode("QA10").orElseThrow().getUsedCount());
-        assertEquals(saved.getId(),orders.create(order(),"QA-payment-1","Bearer test").getBody().getId());
+        Order replay=order();replay.setVoucherCode("QA10");replay.setPointsToUse(50L);replay.setCashReceived(new BigDecimal("2000000"));
+        assertEquals(saved.getId(),orders.create(replay,"QA-payment-1","Bearer test").getBody().getId());
         assertEquals(1,payments.findByOrderId(saved.getId()).size());assertEquals(50,accounts.findById(10L).orElseThrow().getBalance());
         cancellations.cancel(saved.getId(),new OrderCancellationService.Request("Khách đổi ý",false),"Bearer test");
         cancellations.complete(saved.getId());cancellations.complete(saved.getId());
@@ -97,6 +101,8 @@ class PosBenefitsIntegrationTest {
         Order readBack = orderRepository.findById(saved.getId()).orElseThrow();
         assertEquals(10L, readBack.getCustomerId());
         assertEquals(7L, readBack.getPrescriptionId());
+        assertEquals(0L, readBack.getPrescription().getVersion());
+        assertEquals("CLINICAL_REVISION", readBack.getPrescription().getSource());
         assertEquals(7L, readBack.getItems().get(0).getPrescriptionId());
     }
 

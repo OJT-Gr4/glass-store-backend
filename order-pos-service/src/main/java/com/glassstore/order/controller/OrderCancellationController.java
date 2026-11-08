@@ -61,13 +61,14 @@ public class OrderCancellationController {
 
     /** Staff cancels directly, with authorization checked by the state machine. */
     @PostMapping("/{id}/cancel")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<ApiResponse<Order>> cancel(
             @PathVariable("id") Long id,
             @RequestParam(name = "actor", required = false) String actor,
             @RequestBody(required = false) OrderDtos.CancelRequest body,
             @RequestHeader(value = "Authorization", required = false) String token) {
 
-        Order order = requireOrder(id);
+        Order order = orderRepository.lockById(id).orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND));
         if (order.getChannel() == com.glassstore.order.domain.SalesChannel.POS || stockOutboxes.findByOrderId(id).isPresent()) {
             String reason = body == null ? null : body.getReason();
             return ResponseEntity.ok(ApiResponse.success("Hủy đơn tại quầy",
@@ -93,9 +94,7 @@ public class OrderCancellationController {
             });
         }
 
-        if (target == OrderStatus.CANCELLED) {
-            inventoryService.release(updated, reason);
-        }
+        inventoryService.release(updated, reason);
         log.info("Order {} cancelled by {} -> {}", updated.getOrderCode(), actor, target);
         return ResponseEntity.ok(ApiResponse.success("Đã hủy đơn hàng", updated));
     }

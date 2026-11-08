@@ -26,6 +26,11 @@ public class UpdateJobStatusRequest {
 
     private String technicianNotes;
 
+    @Builder.Default
+    private Boolean materialDamaged = false;
+
+    private String idempotencyKey;
+
     public String getEffectiveQcNotes() {
         if (qcNotes != null && !qcNotes.trim().isEmpty()) {
             return qcNotes.trim();

@@ -14,6 +14,7 @@ public enum LabJobStatus {
     IN_PROGRESS("Đang mài máy"),
     QC_PASSED("Đạt chuẩn QC"),
     QC_FAILED("Lỗi hỏng"),
+    REWORK("Cần mài lại"),
     COMPLETED("Hoàn thành"),
     CANCELLED("Đã hủy"),
 
@@ -40,15 +41,16 @@ public enum LabJobStatus {
             Map.entry(CREATED, EnumSet.of(QUEUED, RECEIVED, IN_PROGRESS, CANCELLED)),
             Map.entry(PENDING, EnumSet.of(QUEUED, RECEIVED, IN_PROGRESS, CANCELLED)),
             Map.entry(QUEUED, EnumSet.of(IN_PROGRESS, CANCELLED)),
-            Map.entry(IN_PROGRESS, EnumSet.of(QC_PENDING, QC_CHECK, QC_PASSED, QC_FAILED, CANCELLED)),
+            Map.entry(IN_PROGRESS, EnumSet.of(QC_PENDING, QC_CHECK, QC_PASSED, QC_FAILED, REWORK, CANCELLED)),
             Map.entry(QC_PASSED, EnumSet.of(READY_FOR_DELIVERY, COMPLETED, CANCELLED)),
-            Map.entry(QC_FAILED, EnumSet.of(IN_PROGRESS, CANCELLED, QUEUED)),
+            Map.entry(QC_FAILED, EnumSet.of(IN_PROGRESS, REWORK, CANCELLED, QUEUED)),
+            Map.entry(REWORK, EnumSet.of(IN_PROGRESS, CANCELLED, QUEUED)),
             Map.entry(COMPLETED, EnumSet.noneOf(LabJobStatus.class)),
             Map.entry(CANCELLED, EnumSet.noneOf(LabJobStatus.class)),
             Map.entry(WAITING_PROCESS, EnumSet.of(QUEUED, RECEIVED, IN_PROGRESS, CANCELLED)),
             Map.entry(RECEIVED, EnumSet.of(IN_PROGRESS, CANCELLED)),
-            Map.entry(QC_PENDING, EnumSet.of(QC_PASSED, QC_FAILED, CANCELLED)),
-            Map.entry(QC_CHECK, EnumSet.of(QC_PASSED, QC_FAILED, CANCELLED)),
+            Map.entry(QC_PENDING, EnumSet.of(QC_PASSED, QC_FAILED, REWORK, CANCELLED)),
+            Map.entry(QC_CHECK, EnumSet.of(QC_PASSED, QC_FAILED, REWORK, CANCELLED)),
             Map.entry(READY_FOR_DELIVERY, EnumSet.of(COMPLETED, DELIVERED)),
             Map.entry(DELIVERED, EnumSet.noneOf(LabJobStatus.class))
     );
@@ -75,8 +77,8 @@ public enum LabJobStatus {
         if ("HANDED_OVER".equals(clean)) {
             return COMPLETED;
         }
-        if ("REWORK".equals(clean) || "QC_REWORK".equals(clean)) {
-            return QC_FAILED;
+        if ("QC_REWORK".equals(clean) || "MAI_LAI".equals(clean)) {
+            return REWORK;
         }
         for (LabJobStatus status : LabJobStatus.values()) {
             if (status.name().equalsIgnoreCase(clean)) {

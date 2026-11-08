@@ -25,6 +25,30 @@ public record RepairServiceCreateRequest(
         @NotBlank @Size(max = 120) String receptionEmployee,
         @NotNull @FutureOrPresent LocalDateTime expectedPickupAt,
         @Size(max = 1000) String notes,
-        @Size(max = 1000) String customerNotes
+        @Size(max = 1000) String customerNotes,
+        Long orderId,
+        Long orderItemId,
+        Long customerId
 ) {
+    public RepairServiceCreateRequest(
+            String customerName,
+            String customerPhone,
+            String productName,
+            String productType,
+            String productBarcode,
+            String frameCondition,
+            String lensCondition,
+            String reportedProblem,
+            String physicalCondition,
+            List<String> requestedServices,
+            String assignedTechnician,
+            String receptionEmployee,
+            LocalDateTime expectedPickupAt,
+            String notes,
+            String customerNotes
+    ) {
+        this(customerName, customerPhone, productName, productType, productBarcode, frameCondition, lensCondition,
+                reportedProblem, physicalCondition, requestedServices, assignedTechnician, receptionEmployee,
+                expectedPickupAt, notes, customerNotes, null, null, null);
+    }
 }

@@ -2,7 +2,10 @@ package com.glassstore.lab.controller;
 
 import com.glassstore.common.dto.ApiResponse;
 import com.glassstore.lab.dto.CreateLabJobRequest;
+import com.glassstore.lab.dto.CreateLabQcRequest;
 import com.glassstore.lab.dto.LabJobResponse;
+import com.glassstore.lab.dto.LabQcResponse;
+import com.glassstore.lab.dto.ReworkJobRequest;
 import com.glassstore.lab.dto.UpdateJobStatusRequest;
 import com.glassstore.lab.entity.LabJobHistory;
 import com.glassstore.lab.entity.LabJobStatus;
@@ -32,14 +35,22 @@ public class LabJobController {
     @GetMapping("/by-order/{orderId}")
     public ResponseEntity<ApiResponse<LabJobResponse>> getByOrder(@PathVariable("orderId") Long orderId) {
         var jobs = labJobRepository.findAllByOrderIdOrderByIdAsc(orderId);
-        if (jobs.isEmpty()) throw new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND);
+        if (jobs.isEmpty()) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
         // Report an unfinished job first: one passed item cannot release the whole order.
-        var passed = java.util.Set.of(LabJobStatus.QC_PASSED, LabJobStatus.READY_FOR_DELIVERY,
-                LabJobStatus.DELIVERED, LabJobStatus.COMPLETED);
-        var job = jobs.stream().filter(item -> !passed.contains(item.getStatus())).findFirst().orElse(jobs.getFirst());
+        var passed = java.util.Set.of(
+                LabJobStatus.QC_PASSED,
+                LabJobStatus.READY_FOR_DELIVERY,
+                LabJobStatus.DELIVERED,
+                LabJobStatus.COMPLETED
+        );
+        var job = jobs.stream()
+                .filter(item -> !passed.contains(item.getStatus()))
+                .findFirst()
+                .orElse(jobs.getFirst());
         return ResponseEntity.ok(ApiResponse.success("OK", labJobService.getLabJobById(job.getId())));
     }
-
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<LabJobResponse>>> getLabJobs(
@@ -101,6 +112,42 @@ public class LabJobController {
         request.setTechnicianId(com.glassstore.common.security.CurrentActor.id());
         LabJobResponse updated = labJobService.updateJobStatus(id, request);
         return ResponseEntity.ok(ApiResponse.success("Cập nhật trạng thái gia công QC thành công", updated));
+    }
+
+    @PostMapping("/{id}/qc")
+    public ResponseEntity<ApiResponse<LabQcResponse>> submitQcEvaluation(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody CreateLabQcRequest request) {
+        log.info("API POST /api/lab-jobs/{}/qc - Request: {}", id, request);
+        if (request.getInspectorName() == null || request.getInspectorName().isBlank()) {
+            request.setInspectorName(com.glassstore.common.security.CurrentActor.name());
+        }
+        if (request.getInspectorId() == null) {
+            request.setInspectorId(com.glassstore.common.security.CurrentActor.id());
+        }
+        LabQcResponse response = labJobService.submitQcEvaluation(id, request);
+        return ResponseEntity.ok(ApiResponse.success("Lưu kết quả kiểm định QC thành công", response));
+    }
+
+    @GetMapping("/{id}/qc-history")
+    public ResponseEntity<ApiResponse<List<LabQcResponse>>> getQcHistory(@PathVariable("id") Long id) {
+        log.info("API GET /api/lab-jobs/{}/qc-history", id);
+        return ResponseEntity.ok(ApiResponse.success("Lấy lịch sử kiểm định QC thành công", labJobService.getQcHistory(id)));
+    }
+
+    @PostMapping("/{id}/rework")
+    public ResponseEntity<ApiResponse<LabJobResponse>> requestRework(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody ReworkJobRequest request) {
+        log.info("API POST /api/lab-jobs/{}/rework - Request: {}", id, request);
+        if (request.getTechnicianName() == null || request.getTechnicianName().isBlank()) {
+            request.setTechnicianName(com.glassstore.common.security.CurrentActor.name());
+        }
+        if (request.getTechnicianId() == null) {
+            request.setTechnicianId(com.glassstore.common.security.CurrentActor.id());
+        }
+        LabJobResponse response = labJobService.requestRework(id, request);
+        return ResponseEntity.ok(ApiResponse.success("Yêu cầu mài lại kính thành công", response));
     }
 
 }

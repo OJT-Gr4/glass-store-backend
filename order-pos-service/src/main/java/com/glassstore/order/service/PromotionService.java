@@ -35,7 +35,13 @@ public class PromotionService {
         for (OrderItem item : order.getItems()) if (item != null && item.getPrescriptionId() != null) prescriptions.add(item.getPrescriptionId());
         if (prescriptions.size() > 1) throw invalid("Mỗi đơn POS chỉ được liên kết một toa kính.");
         Long prescriptionId = prescriptions.stream().findFirst().orElse(null);
-        if (prescriptionId != null) data.requirePrescription(prescriptionId, order.getCustomerId(), token);
+        if (prescriptionId != null) {
+            var verified = data.requirePrescription(prescriptionId, order.getCustomerId(), token);
+            if (consumeLocks) {
+                Map<String, Object> values = new com.fasterxml.jackson.databind.ObjectMapper().convertValue(verified, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+                order.setPrescription(ClinicalPrescriptionSnapshot.from(values, prescriptionId, order.getCustomerId()));
+            }
+        }
         if (consumeLocks && order.getOrderType() != null && order.getOrderType().requiresPrescription() && prescriptionId == null)
             throw invalid("Đơn kính thuốc cần liên kết toa kính của khách.");
         boolean hasPrescriptionLens = false;

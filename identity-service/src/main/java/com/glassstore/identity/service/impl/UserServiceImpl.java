@@ -47,7 +47,8 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserDTO getUserById(Long id) {
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với ID: " + id));
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Không tìm thấy người dùng với ID: " + id));
         return mapToDTO(user);
     }
 
@@ -140,7 +141,7 @@ public class UserServiceImpl implements UserService {
             throw new IllegalArgumentException("Mật khẩu phải có độ dài tối thiểu 6 ký tự!");
         }
 
-        String normalizedEmail = request.getEmail().trim().toLowerCase();
+        String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
         if (userRepository.findByEmail(normalizedEmail).isPresent()) {
             throw new EmailAlreadyExistsException("Email '" + normalizedEmail + "' đã được đăng ký trong hệ thống!");
         }
@@ -149,9 +150,11 @@ public class UserServiceImpl implements UserService {
         if (baseUsername.isEmpty()) {
             baseUsername = "customer";
         }
+        // Keep within the persisted 50-character username and avoid small random suffix collisions.
+        baseUsername = baseUsername.substring(0, Math.min(36, baseUsername.length()));
         String finalUsername = baseUsername;
-        if (userRepository.findByUsername(finalUsername).isPresent()) {
-            finalUsername = baseUsername + "_" + (new Random().nextInt(9000) + 1000);
+        while (userRepository.findByUsername(finalUsername).isPresent()) {
+            finalUsername = baseUsername + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         }
 
         Role customerRole = roleRepository.findByName("ROLE_CUSTOMER")
@@ -169,7 +172,7 @@ public class UserServiceImpl implements UserService {
                 .build();
 
         User savedUser = userRepository.save(user);
-        log.info("Đăng ký thành công tài khoản khách hàng ID: {}, Email: {}", savedUser.getId(), savedUser.getEmail());
+        log.info("Đăng ký thành công tài khoản khách hàng ID: {}", savedUser.getId());
         return mapToDTO(savedUser);
     }
 
@@ -226,7 +229,7 @@ public class UserServiceImpl implements UserService {
 
         // 4. Kiểm tra trạng thái tài khoản
         if (!"ACTIVE".equalsIgnoreCase(user.getStatus())) {
-            throw new RuntimeException("Tài khoản này hiện đang bị tạm khóa hoặc ngừng hoạt động!");
+            throw new com.glassstore.identity.exception.AccountLockedException("Tài khoản này hiện đang bị tạm khóa hoặc ngừng hoạt động!");
         }
 
         // 5. Cấp phát JWT Access Token (24h) và Refresh Token (7 ngày)
@@ -287,7 +290,7 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new BadCredentialsException("Người dùng không tồn tại!"));
 
         if (!"ACTIVE".equalsIgnoreCase(user.getStatus())) {
-            throw new RuntimeException("Tài khoản đang bị tạm khóa!");
+            throw new com.glassstore.identity.exception.AccountLockedException("Tài khoản đang bị tạm khóa!");
         }
 
         String newAccessToken = jwtTokenProvider.generateAccessToken(user);

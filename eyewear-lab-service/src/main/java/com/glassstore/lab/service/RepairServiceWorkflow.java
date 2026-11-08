@@ -2,14 +2,18 @@ package com.glassstore.lab.service;
 
 import com.glassstore.common.exception.ApiException;
 import com.glassstore.common.exception.ErrorCode;
+import com.glassstore.common.security.CurrentActor;
+import com.glassstore.lab.client.WarrantyOrderClient;
 import com.glassstore.lab.dto.RepairServiceCreateRequest;
 import com.glassstore.lab.dto.RepairServiceResponse;
 import com.glassstore.lab.dto.RepairServiceStatusHistoryDTO;
 import com.glassstore.lab.dto.RepairServiceStatusRequest;
+import com.glassstore.lab.dto.WarrantyOrderItemDTO;
 import com.glassstore.lab.entity.RepairService;
 import com.glassstore.lab.entity.RepairServiceStatusHistory;
 import com.glassstore.lab.repository.RepairServiceRepository;
 import com.glassstore.lab.repository.RepairServiceStatusHistoryRepository;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,11 +21,15 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class RepairServiceWorkflow {
+    public RepairServiceWorkflow(RepairServiceRepository repairRepository, RepairServiceStatusHistoryRepository historyRepository) {
+        this(repairRepository, historyRepository, null);
+    }
 
     private static final Set<String> VALID_SERVICES = Set.of(
             "NOSE_PAD_REPLACEMENT", "SCREW_TIGHTENING", "SCREW_REPLACEMENT",
@@ -30,6 +38,7 @@ public class RepairServiceWorkflow {
 
     private final RepairServiceRepository repairRepository;
     private final RepairServiceStatusHistoryRepository historyRepository;
+    private final WarrantyOrderClient orderClient;
 
     @Transactional(readOnly = true)
     public List<RepairServiceResponse> search(String code, String phone, String status) {
@@ -60,20 +69,34 @@ public class RepairServiceWorkflow {
         if (request.requestedServices().stream().anyMatch(service -> !VALID_SERVICES.contains(service))) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Loại dịch vụ không hợp lệ");
         }
+
+        WarrantyOrderItemDTO purchase = resolvePurchase(request);
+        Long requestedCustomerId = request.customerId() != null ? request.customerId() : purchase.customerId();
+        if (!Objects.equals(requestedCustomerId, purchase.customerId())) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR,
+                    "Khách hàng không thuộc đơn hàng được chọn");
+        }
+        if (request.customerPhone() == null || request.customerPhone().isBlank()) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Cần nhập số điện thoại khách hàng");
+        }
+
         RepairService service = RepairService.builder()
-                .customerName(request.customerName().trim())
-                .customerPhone(request.customerPhone().trim())
-                .productName(request.productName().trim())
+                .customerName(trimToNull(request.customerName()))
+                .customerPhone(trimToNull(request.customerPhone()))
+                .productName(trimToNull(request.productName()))
                 .productType(trimToNull(request.productType()))
                 .productBarcode(trimToNull(request.productBarcode()))
-                .frameCondition(request.frameCondition().trim())
-                .lensCondition(request.lensCondition().trim())
-                .reportedProblem(request.reportedProblem().trim())
-                .physicalCondition(request.physicalCondition().trim())
+                .frameCondition(trimToNull(request.frameCondition()))
+                .lensCondition(trimToNull(request.lensCondition()))
+                .reportedProblem(trimToNull(request.reportedProblem()))
+                .physicalCondition(trimToNull(request.physicalCondition()))
                 .requestedServices(new ArrayList<>(request.requestedServices().stream().distinct().toList()))
                 .serviceType(request.requestedServices().get(0))
                 .assignedTechnician(trimToNull(request.assignedTechnician()))
-                .receptionEmployee(request.receptionEmployee().trim())
+                .receptionEmployee(trimToNull(request.receptionEmployee()))
+                .orderId(purchase.orderId())
+                .orderItemId(purchase.orderItemId())
+                .customerId(purchase.customerId())
                 .receivedAt(receivedAt)
                 .expectedPickupAt(request.expectedPickupAt())
                 .status("RECEIVED")
@@ -133,6 +156,32 @@ public class RepairServiceWorkflow {
                 service.getPhysicalCondition(), service.getRequestedServices(), service.getAssignedTechnician(),
                 service.getReceptionEmployee(), service.getReceivedAt(), service.getExpectedPickupAt(),
                 service.getCompletedAt(), service.getStatus(), service.getNotes(), service.getCustomerNotes(), history);
+    }
+
+    private WarrantyOrderItemDTO resolvePurchase(RepairServiceCreateRequest request) {
+        if (request.orderId() == null || request.orderItemId() == null) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR,
+                    "Cần cung cấp orderId và orderItemId để tiếp nhận sửa chữa");
+        }
+        try {
+            WarrantyOrderItemDTO item = orderClient.getPurchaseItem(request.orderId(), request.orderItemId());
+            if (item == null || !request.orderId().equals(item.orderId()) || !request.orderItemId().equals(item.orderItemId())) {
+                throw ApiException.of(ErrorCode.VALIDATION_ERROR,
+                        "Sản phẩm không thuộc đơn hàng đã chỉ định");
+            }
+            if (!Objects.equals(request.customerPhone(), item.customerPhone())
+                    && !Objects.equals(request.customerName(), item.customerName())) {
+                throw ApiException.of(ErrorCode.VALIDATION_ERROR,
+                        "Thông tin khách hàng không khớp với đơn hàng");
+            }
+            return item;
+        } catch (FeignException.NotFound exception) {
+            throw ApiException.of(ErrorCode.ORDER_NOT_FOUND,
+                    "Không tìm thấy đơn hàng hoặc sản phẩm trong đơn hàng");
+        } catch (FeignException exception) {
+            throw ApiException.of(ErrorCode.UPSTREAM_UNAVAILABLE,
+                    "Không thể xác thực thông tin đơn hàng với POS");
+        }
     }
 
     private String normalizeStatus(String status) {

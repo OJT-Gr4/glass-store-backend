@@ -6,10 +6,11 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-/** Submitted by the customer; this snapshot is not a clinician-approved prescription. */
+/** Immutable order measurements; source distinguishes a clinical revision from customer input. */
 @Embeddable
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class OrderPrescription {
+    @Column(name = "rx_version") private Long version;
     @Column(name = "rx_od_sph", precision = 4, scale = 2) private BigDecimal odSph;
     @Column(name = "rx_od_cyl", precision = 4, scale = 2) private BigDecimal odCyl;
     @Column(name = "rx_od_axis") private Integer odAxis;

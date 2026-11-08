@@ -69,9 +69,10 @@ public class PosController {
     @PostMapping("/checkout")
     public ResponseEntity<ApiResponse<Order>> checkout(
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @Valid @RequestBody OrderDtos.CheckoutRequest request) {
+            @Valid @RequestBody OrderDtos.CheckoutRequest request,
+            @RequestHeader(value = "Authorization", required = false) String token) {
         request.setStaffName(com.glassstore.common.security.CurrentActor.name());
-        OrderCheckoutService.CheckoutOutcome outcome = posService.checkout(request, idempotencyKey);
+        OrderCheckoutService.CheckoutOutcome outcome = posService.checkout(request, idempotencyKey,token);
         HttpStatus status = outcome.replayed() ? HttpStatus.OK : HttpStatus.CREATED;
         return ResponseEntity.status(status).body(
                 ApiResponse.success(outcome.replayed()

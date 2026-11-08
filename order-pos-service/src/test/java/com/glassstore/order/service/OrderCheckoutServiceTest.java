@@ -55,8 +55,11 @@ class OrderCheckoutServiceTest {
         labClient = mock(LabClient.class);
         labServiceClient = mock(LabServiceClient.class);
         warrantyActivationService = mock(WarrantyActivationService.class);
+        CheckoutIdempotencyService idempotency = mock(CheckoutIdempotencyService.class);
+        when(idempotency.fingerprint(any(OrderDtos.CheckoutRequest.class))).thenReturn("hash");
+        when(idempotency.begin(any(),any(),any())).thenAnswer(inv -> new com.glassstore.order.entity.CheckoutRequestRecord());
         service = new OrderCheckoutService(orderRepository, paymentRepository, pricingService,
-                orderStatusService, inventoryService, labClient, warrantyActivationService, labServiceClient);
+                orderStatusService, inventoryService, labClient, warrantyActivationService, labServiceClient,idempotency,mock(LabDispatchService.class));
 
         when(orderRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
         when(orderRepository.findByOrderCode(any())).thenReturn(Optional.empty());
@@ -110,19 +113,17 @@ class OrderCheckoutServiceTest {
     void cashAlreadySettled() {
         Order order = Order.builder().id(1L).orderCode("ORD-X").paymentMethod(PaymentMethod.CASH)
                 .status(OrderStatus.PENDING_PAYMENT).build();
-        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(orderRepository.lockById(1L)).thenReturn(Optional.of(order));
         when(paymentRepository.existsByOrderIdAndStatus(1L, PaymentStatus.SUCCESS)).thenReturn(true);
 
-        assertThatThrownBy(() -> service.settleCash(1L, "STAFF"))
-                .isInstanceOf(ApiException.class)
-                .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.PAYMENT_ALREADY_SETTLED);
+        assertThat(service.settleCash(1L,"STAFF")).isSameAs(order);
+        verify(paymentRepository,never()).save(any());
     }
 
     @Test
     @DisplayName("dispatchLabJobIfNeeded: Tự động gửi CreateLabJobRequest qua LabServiceClient khi đơn có kính thuốc")
     void dispatchLabJob_PrescriptionOrder_CallsFeignClient() {
-        Map<String, Object> rxData = Map.of(
+        Map<String, Object> rxData = new java.util.HashMap<>(Map.of(
                 "id", 55L,
                 "customerId", 10L,
                 "odSph", -2.00,
@@ -132,7 +133,8 @@ class OrderCheckoutServiceTest {
                 "odAxis", 90,
                 "osAxis", 90,
                 "pd", 63.0
-        );
+        ));
+        rxData.put("odAdd", 0); rxData.put("osAdd", 0); rxData.put("version", 0L);
         when(labServiceClient.getPrescriptionById(55L)).thenReturn(org.springframework.http.ResponseEntity.ok(Map.of("data", rxData)));
 
         List<OrderItem> items = new ArrayList<>();
@@ -170,7 +172,7 @@ class OrderCheckoutServiceTest {
     @Test
     @DisplayName("dispatchLabJobIfNeeded: Khi LabServiceClient gặp lỗi thì try-catch không ném lỗi ra ngoài")
     void dispatchLabJob_WhenFeignClientFails_DoesNotThrow() {
-        Map<String, Object> rxData = Map.of(
+        Map<String, Object> rxData = new java.util.HashMap<>(Map.of(
                 "id", 60L,
                 "customerId", 20L,
                 "odSph", -1.50,
@@ -180,7 +182,8 @@ class OrderCheckoutServiceTest {
                 "odAxis", 0,
                 "osAxis", 0,
                 "pd", 62.0
-        );
+        ));
+        rxData.put("odAdd", 0); rxData.put("osAdd", 0); rxData.put("version", 0L);
         when(labServiceClient.getPrescriptionById(60L)).thenReturn(org.springframework.http.ResponseEntity.ok(Map.of("data", rxData)));
 
         List<OrderItem> items = new ArrayList<>();

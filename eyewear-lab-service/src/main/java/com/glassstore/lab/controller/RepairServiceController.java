@@ -36,10 +36,12 @@ public class RepairServiceController {
     @PostMapping
     public ResponseEntity<RepairServiceResponse> createRepairService(
             @Valid @RequestBody RepairServiceCreateRequest request) {
-        request = new RepairServiceCreateRequest(request.customerName(),request.customerPhone(),request.productName(),
-            request.productType(),request.productBarcode(),request.frameCondition(),request.lensCondition(),request.reportedProblem(),
-            request.physicalCondition(),request.requestedServices(),request.assignedTechnician(),
-            com.glassstore.common.security.CurrentActor.name(),request.expectedPickupAt(),request.notes(),request.customerNotes());
+        request = new RepairServiceCreateRequest(request.customerName(), request.customerPhone(), request.productName(),
+                request.productType(), request.productBarcode(), request.frameCondition(), request.lensCondition(),
+                request.reportedProblem(), request.physicalCondition(), request.requestedServices(),
+                request.assignedTechnician(), com.glassstore.common.security.CurrentActor.name(),
+                request.expectedPickupAt(), request.notes(), request.customerNotes(),
+                request.orderId(), request.orderItemId(), request.customerId());
         return ResponseEntity.status(HttpStatus.CREATED).body(repairServiceWorkflow.create(request));
     }
 

@@ -15,4 +15,5 @@ public interface LabJobRepository extends JpaRepository<LabJob, Long> {
     List<LabJob> findAllByOrderIdOrderByIdAsc(Long orderId);
     List<LabJob> findByStatusOrderByCreatedAtDesc(LabJobStatus status);
     List<LabJob> findAllByOrderByCreatedAtDesc();
+    List<LabJob> findByPrescriptionIdAndPrescriptionSnapshotIsNull(Long prescriptionId);
 }

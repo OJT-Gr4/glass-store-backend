@@ -32,6 +32,8 @@ public final class CurrentActor {
     public static String name() {
         var auth = authentication();
         if (auth.getPrincipal() instanceof Jwt jwt) {
+            String fullName = jwt.getClaimAsString("fullName");
+            if (fullName != null && !fullName.isBlank()) return fullName;
             String username = jwt.getClaimAsString("username");
             if (username != null && !username.isBlank()) return username;
         }

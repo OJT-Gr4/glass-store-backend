@@ -18,6 +18,14 @@ public class EyeExamAppointment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    @Column(nullable = false)
+    @Builder.Default
+    private Long version = 0L;
+
+    @Column(name = "prescription_id")
+    private Long prescriptionId;
+
     @Column(name = "ticket_code", nullable = false, unique = true)
     private String ticketCode;
 

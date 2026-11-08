@@ -3,13 +3,16 @@ package com.glassstore.lab.controller;
 import com.glassstore.common.dto.ApiResponse;
 import com.glassstore.lab.entity.Prescription;
 import com.glassstore.lab.repository.PrescriptionRepository;
+import com.glassstore.lab.dto.CreatePrescriptionRequest;
+import com.glassstore.lab.dto.UpdatePrescriptionRequest;
+import com.glassstore.lab.entity.PrescriptionRevision;
+import com.glassstore.lab.service.PrescriptionService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -20,7 +23,7 @@ import java.util.List;
 public class PrescriptionController {
 
     private final PrescriptionRepository prescriptionRepository;
-    private final com.glassstore.lab.client.PrescriptionCustomerClient customerClient;
+    private final PrescriptionService prescriptionService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<Prescription>>> getAllPrescriptions() {
@@ -30,10 +33,19 @@ public class PrescriptionController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<Prescription>> getPrescriptionById(@PathVariable("id") Long id) {
-        Prescription p = prescriptionRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy toa kính với ID: " + id));
-        com.glassstore.common.security.CurrentActor.requireOwner(p.getCustomerId());
+        Prescription p = prescriptionService.get(id);
         return ResponseEntity.ok(ApiResponse.success("Lấy chi tiết toa kính thành công", p));
+    }
+
+    @GetMapping("/{id}/revisions")
+    public ResponseEntity<ApiResponse<List<PrescriptionRevision>>> history(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Prescription revision history", prescriptionService.history(id)));
+    }
+
+    @GetMapping("/{id}/revisions/{version}")
+    public ResponseEntity<ApiResponse<PrescriptionRevision>> revision(@PathVariable("id") Long id,
+                                                                     @PathVariable("version") Long version) {
+        return ResponseEntity.ok(ApiResponse.success("Immutable prescription revision", prescriptionService.revision(id, version)));
     }
 
     @GetMapping("/customer/{customerId}")
@@ -68,26 +80,13 @@ public class PrescriptionController {
 
     @PostMapping
     public ResponseEntity<ApiResponse<Prescription>> createPrescription(
-            @jakarta.validation.Valid @RequestBody com.glassstore.lab.dto.CreatePrescriptionRequest request) {
-        String customerName = customerClient.requireCustomer(request.getCustomerId());
-        Prescription prescription = new Prescription();
-        prescription.setCustomerId(request.getCustomerId());
-        prescription.setOdSph(request.getOdSph());
-        prescription.setOdCyl(request.getOdCyl());
-        prescription.setOdAxis(request.getOdAxis());
-        prescription.setOdAdd(request.getOdAdd());
-        prescription.setOsSph(request.getOsSph());
-        prescription.setOsCyl(request.getOsCyl());
-        prescription.setOsAxis(request.getOsAxis());
-        prescription.setOsAdd(request.getOsAdd());
-        prescription.setPd(request.getPd());
-        prescription.setNotes(request.getNotes());
-        prescription.setLensSku(request.getLensSku());
-        prescription.setLensName(request.getLensName());
-        prescription.setCustomerName(customerName);
-        prescription.setOptometristId(com.glassstore.common.security.CurrentActor.id());
-        prescription.setOptometristName(com.glassstore.common.security.CurrentActor.name());
-        prescription.setCreatedAt(LocalDateTime.now());
-        return ResponseEntity.ok(ApiResponse.success("Prescription saved", prescriptionRepository.save(prescription)));
+            @Valid @RequestBody CreatePrescriptionRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Prescription saved", prescriptionService.create(request)));
+    }
+
+    @RequestMapping(value = "/{id}", method = {RequestMethod.PATCH, RequestMethod.PUT})
+    public ResponseEntity<ApiResponse<Prescription>> updatePrescription(@PathVariable("id") Long id,
+            @Valid @RequestBody UpdatePrescriptionRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Prescription revision saved", prescriptionService.update(id, request)));
     }
 }

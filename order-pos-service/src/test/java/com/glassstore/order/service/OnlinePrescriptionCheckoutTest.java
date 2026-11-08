@@ -40,6 +40,7 @@ class OnlinePrescriptionCheckoutTest {
     @Autowired ObjectMapper json;
     @Autowired OrderRepository orders;
     @Autowired PaymentRepository payments;
+    @Autowired com.glassstore.order.repository.OrderInventoryTaskRepository inventoryTasks;
     @Autowired EntityManager entities;
     @MockBean CatalogClient catalog;
     @MockBean OrderDataInitializer demoSeed;
@@ -88,7 +89,9 @@ class OnlinePrescriptionCheckoutTest {
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(payload)))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(id));
         assertEquals(1, orders.count()); assertEquals(1, payments.count());
-        verify(catalog,times(1)).reserve(any());
+        var task=inventoryTasks.findById(id).orElseThrow();
+        assertEquals("RESERVE",task.getOperation());assertEquals("PENDING",task.getStatus());
+        verify(catalog,never()).reserve(any()); // Remote work starts only after this transaction commits.
     }
 
     @Test void rejectsUnconfirmedOrInvalidMeasurementsWithoutCreatingAnOrder() throws Exception {

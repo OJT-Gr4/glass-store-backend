@@ -78,6 +78,15 @@ public class RepairService {
     @Column(name = "service_type", nullable = false)
     private String serviceType;
 
+    @Column(name = "order_id")
+    private Long orderId;
+
+    @Column(name = "order_item_id")
+    private Long orderItemId;
+
+    @Column(name = "customer_id")
+    private Long customerId;
+
     @Column(name = "status", nullable = false)
     @Builder.Default
     private String status = "RECEIVED";

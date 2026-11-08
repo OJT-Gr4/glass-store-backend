@@ -19,6 +19,12 @@ public class Prescription {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** Also identifies the immutable revision pinned by orders and lab jobs. */
+    @Version
+    @Column(nullable = false)
+    @Builder.Default
+    private Long version = 0L;
+
     @Column(name = "customer_id", nullable = false)
     private Long customerId;
 
@@ -35,31 +41,25 @@ public class Prescription {
     private BigDecimal odSph;
 
     @Column(name = "od_cyl", precision = 4, scale = 2)
-    @Builder.Default
-    private BigDecimal odCyl = BigDecimal.ZERO;
+    private BigDecimal odCyl;
 
     @Column(name = "od_axis")
-    @Builder.Default
-    private Integer odAxis = 0;
+    private Integer odAxis;
 
     @Column(name = "od_add", precision = 4, scale = 2)
-    @Builder.Default
-    private BigDecimal odAdd = BigDecimal.ZERO;
+    private BigDecimal odAdd;
 
     @Column(name = "os_sph", precision = 4, scale = 2, nullable = false)
     private BigDecimal osSph;
 
     @Column(name = "os_cyl", precision = 4, scale = 2)
-    @Builder.Default
-    private BigDecimal osCyl = BigDecimal.ZERO;
+    private BigDecimal osCyl;
 
     @Column(name = "os_axis")
-    @Builder.Default
-    private Integer osAxis = 0;
+    private Integer osAxis;
 
     @Column(name = "os_add", precision = 4, scale = 2)
-    @Builder.Default
-    private BigDecimal osAdd = BigDecimal.ZERO;
+    private BigDecimal osAdd;
 
     @Column(name = "pd", precision = 4, scale = 1, nullable = false)
     private BigDecimal pd;
@@ -76,5 +76,8 @@ public class Prescription {
     @Column(name = "created_at", updatable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 }
 

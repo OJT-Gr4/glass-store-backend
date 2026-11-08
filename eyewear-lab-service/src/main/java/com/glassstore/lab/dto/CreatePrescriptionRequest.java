@@ -5,12 +5,14 @@ import lombok.Data;
 @Data
 public class CreatePrescriptionRequest {
     @NotNull @Positive
+    @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using=StrictLongDeserializer.class)
     private Long customerId;
     @NotNull @DecimalMin("-30") @DecimalMax("30") @Digits(integer=2,fraction=2)
     private BigDecimal odSph;
     @NotNull @DecimalMin("-10") @DecimalMax("10") @Digits(integer=2,fraction=2)
     private BigDecimal odCyl;
     @NotNull @Min(0) @Max(180)
+    @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using=StrictIntegerDeserializer.class)
     private Integer odAxis;
     @NotNull @DecimalMin("0") @DecimalMax("4") @Digits(integer=1,fraction=2)
     private BigDecimal odAdd;
@@ -19,6 +21,7 @@ public class CreatePrescriptionRequest {
     @NotNull @DecimalMin("-10") @DecimalMax("10") @Digits(integer=2,fraction=2)
     private BigDecimal osCyl;
     @NotNull @Min(0) @Max(180)
+    @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using=StrictIntegerDeserializer.class)
     private Integer osAxis;
     @NotNull @DecimalMin("0") @DecimalMax("4") @Digits(integer=1,fraction=2)
     private BigDecimal osAdd;

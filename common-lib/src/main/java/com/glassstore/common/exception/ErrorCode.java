@@ -47,6 +47,7 @@ public enum ErrorCode {
     ORDER_NOT_CANCELLABLE(40942, "Đơn hàng không còn ở trạng thái có thể hủy", HttpStatus.CONFLICT),
     ORDER_FORBIDDEN(40340, "Bạn không có quyền truy cập đơn hàng này", HttpStatus.FORBIDDEN),
     IDEMPOTENCY_KEY_REQUIRED(40040, "Thiếu Idempotency-Key cho yêu cầu tạo đơn", HttpStatus.BAD_REQUEST),
+    IDEMPOTENCY_CONFLICT(40943, "Khóa thanh toán đã dùng cho yêu cầu khác; kiểm tra đơn cũ", HttpStatus.CONFLICT),
     POS_SESSION_NOT_FOUND(40480, "Không tìm thấy phiên bán hàng POS", HttpStatus.NOT_FOUND),
     POS_SESSION_CLOSED(40980, "Phiên bán hàng POS đã đóng", HttpStatus.CONFLICT),
 

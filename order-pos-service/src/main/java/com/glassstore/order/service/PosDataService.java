@@ -43,7 +43,7 @@ public class PosDataService {
         return customer;
     }
 
-    public void requirePrescription(Long id, Long customerId, String token) {
+    public JsonNode requirePrescription(Long id, Long customerId, String token) {
         if (id == null || id <= 0 || customerId == null || customerId <= 0)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chọn đúng khách hàng và toa kính trước khi thanh toán.");
         JsonNode response = get(labUrl + "/api/prescriptions/" + id, token);
@@ -53,6 +53,7 @@ public class PosDataService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Toa kính không tồn tại hoặc thiếu định danh hợp lệ.");
         if (!prescription.path("customerId").isIntegralNumber() || prescription.path("customerId").longValue() != customerId)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Toa kính không thuộc khách hàng đang thanh toán.");
+        return prescription;
     }
 
     public record CatalogItem(BigDecimal price, String name, String productType, boolean sellable) {}
