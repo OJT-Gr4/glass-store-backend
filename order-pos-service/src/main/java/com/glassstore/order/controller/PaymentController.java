@@ -59,4 +59,19 @@ public class PaymentController {
         return ResponseEntity.ok(ApiResponse.success("Đã ghi nhận yêu cầu hoàn tiền",
                 paymentService.requestRefund(orderId, actor, reason)));
     }
+
+    @PostMapping("/order/{orderId}/refund-confirm")
+    public ResponseEntity<ApiResponse<Order>> refundConfirm(
+            @PathVariable("orderId") Long orderId,
+            @RequestBody(required = false) OrderDtos.CancelRequest body) {
+        if (com.glassstore.common.security.CurrentActor.customer()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN,
+                    "Chỉ nhân viên được phép xác nhận hoàn tiền");
+        }
+        String actor = com.glassstore.common.security.CurrentActor.name();
+        String reason = body == null ? null : body.getReason();
+        return ResponseEntity.ok(ApiResponse.success("Đã xác nhận hoàn tiền thành công",
+                paymentService.confirmRefund(orderId, actor, reason)));
+    }
 }

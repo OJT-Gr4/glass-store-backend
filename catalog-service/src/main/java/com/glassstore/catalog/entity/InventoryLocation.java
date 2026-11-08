@@ -22,6 +22,12 @@ public class InventoryLocation {
     @Column(nullable = false, length = 160)
     private String name;
 
+    @Column(length = 100)
+    private String area;
+
+    @Column(name = "location_type", length = 16)
+    private String locationType;
+
     @Column(nullable = false)
     @Builder.Default
     private boolean active = true;

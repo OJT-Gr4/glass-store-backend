@@ -11,4 +11,5 @@ import java.util.Optional;
 public interface PosSessionRepository extends JpaRepository<PosSession, Long> {
     Optional<PosSession> findBySessionCode(String sessionCode);
     List<PosSession> findByStaffNameAndStatusOrderByOpenedAtDesc(String staffName, String status);
+    boolean existsByBranchNameIgnoreCase(String branchName);
 }

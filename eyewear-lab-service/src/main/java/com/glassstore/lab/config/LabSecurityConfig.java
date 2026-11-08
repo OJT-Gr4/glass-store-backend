@@ -23,6 +23,7 @@ public class LabSecurityConfig {
                 .requestMatchers(HttpMethod.GET,"/api/prescriptions","/api/v1/prescriptions").hasAnyRole("ADMIN","OPTOMETRIST","SALES_STAFF","LAB_TECH")
                 .requestMatchers(HttpMethod.GET,"/api/prescriptions/**","/api/v1/prescriptions/**").hasAnyRole("ADMIN","OPTOMETRIST","SALES_STAFF","LAB_TECH","CUSTOMER","SERVICE")
                 .requestMatchers("/api/prescriptions/**","/api/prescriptions","/api/v1/prescriptions/**","/api/v1/prescriptions").hasAnyRole("ADMIN","OPTOMETRIST")
+                .requestMatchers(HttpMethod.GET,"/api/appointments/location/*/exists").hasRole("SERVICE")
                 .requestMatchers(HttpMethod.GET,"/api/appointments/**","/api/appointments","/api/v1/appointments/**","/api/v1/appointments").hasAnyRole("ADMIN","OPTOMETRIST","SALES_STAFF","CUSTOMER")
                 .requestMatchers(HttpMethod.POST,"/api/appointments","/api/v1/appointments").hasAnyRole("ADMIN","OPTOMETRIST","SALES_STAFF","CUSTOMER")
                 .requestMatchers("/api/appointments/**","/api/v1/appointments/**").hasAnyRole("ADMIN","OPTOMETRIST","SALES_STAFF")

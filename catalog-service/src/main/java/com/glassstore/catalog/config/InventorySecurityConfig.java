@@ -14,6 +14,8 @@ public class InventorySecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(a -> a
                 .requestMatchers(HttpMethod.OPTIONS,"/**").permitAll().requestMatchers("/error").permitAll()
+                .requestMatchers("/api/catalog/admin/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/locations").permitAll()
                 .requestMatchers(HttpMethod.GET,"/api/products","/api/products/**","/api/categories/**").permitAll()
                 .requestMatchers("/internal/**").hasRole("SERVICE")
                 .requestMatchers(HttpMethod.GET,"/api/variants/**").hasAnyRole("SERVICE","ADMIN","SALES_STAFF","LAB_TECH","LAB")

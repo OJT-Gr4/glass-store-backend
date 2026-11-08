@@ -3,6 +3,7 @@ package com.glassstore.lab.controller;
 import com.glassstore.common.dto.ApiResponse;
 import com.glassstore.common.security.CurrentActor;
 import com.glassstore.lab.client.PrescriptionCustomerClient;
+import com.glassstore.lab.client.CatalogLocationClient;
 import com.glassstore.lab.dto.CreateAppointmentRequest;
 import com.glassstore.lab.dto.UpdateAppointmentStatusRequest;
 import com.glassstore.lab.entity.EyeExamAppointment;
@@ -30,6 +31,13 @@ public class EyeExamAppointmentController {
     private final EyeExamAppointmentRepository appointments;
     private final PrescriptionRepository prescriptions;
     private final PrescriptionCustomerClient customers;
+    private final CatalogLocationClient locations;
+
+    @GetMapping("/location/{locationCode}/exists")
+    public ResponseEntity<ApiResponse<Boolean>> hasAppointmentsForLocation(@PathVariable String locationCode) {
+        return ResponseEntity.ok(ApiResponse.success("Appointment location reference",
+                appointments.existsByLocationCodeIgnoreCase(locationCode)));
+    }
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<EyeExamAppointment>>> getAllAppointments() {
@@ -56,8 +64,13 @@ public class EyeExamAppointmentController {
         if (customer && !scheduled.isAfter(LocalDateTime.now(BOOKING_ZONE)))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Giờ đặt lịch phải ở tương lai");
         String customerName = customers.requireCustomer(customerId);
+        String locationCode = request.getLocationCode();
+        if (locationCode != null && !locationCode.isBlank()) {
+            locationCode = locations.requireActiveLocation(locationCode.trim());
+        }
         EyeExamAppointment appointment = EyeExamAppointment.builder()
                 .customerId(customerId).customerName(customerName).customerPhone(request.getCustomerPhone())
+                .locationCode(locationCode).scheduledDate(scheduled.toLocalDate())
                 .ticketCode("EP-" + UUID.randomUUID().toString().toUpperCase())
                 .ticketType(customer ? "ONLINE" : "WALK_IN")
                 .roomName(customer ? null : request.getRoomName())

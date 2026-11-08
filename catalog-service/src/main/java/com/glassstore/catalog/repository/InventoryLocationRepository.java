@@ -10,4 +10,9 @@ public interface InventoryLocationRepository extends JpaRepository<InventoryLoca
     Optional<InventoryLocation> findByCode(String code);
     Optional<InventoryLocation> findByCodeAndActiveTrue(String code);
     List<InventoryLocation> findAllByActiveTrueOrderByCodeAsc();
+    List<InventoryLocation> findAllByOrderByCodeAsc();
+    boolean existsByCodeIgnoreCase(String code);
+    boolean existsByCodeIgnoreCaseAndIdNot(String code, Long id);
+    boolean existsByNameIgnoreCase(String name);
+    boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
 }

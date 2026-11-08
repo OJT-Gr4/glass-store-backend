@@ -6,6 +6,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
+import com.glassstore.catalog.service.CatalogManagementService;
+import static org.mockito.Mockito.when;
+import java.util.List;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -17,6 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class CatalogAccessSecurityTest {
     @Autowired MockMvc mvc;
     @org.springframework.boot.test.mock.mockito.MockBean com.glassstore.catalog.service.ProductService products;
+    @org.springframework.boot.test.mock.mockito.MockBean CatalogManagementService management;
     @Test void publicCatalogDoesNotExposeInventoryApis() throws Exception {
         mvc.perform(get("/api/products")).andExpect(status().isOk());
         org.mockito.Mockito.verify(products).getAllProducts(null,null,"ACTIVE");
@@ -40,5 +44,18 @@ class CatalogAccessSecurityTest {
         mvc.perform(post("/internal/inventory/sales/check").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
             .contentType("application/json").content("{}"))
             .andExpect(status().isForbidden());
+    }
+    @Test void catalogAdministrationRequiresAdminAndPublicLocationsRemainReadable() throws Exception {
+        when(management.getCategories()).thenReturn(List.of());
+        when(management.getActiveLocations()).thenReturn(List.of());
+
+        mvc.perform(get("/api/catalog/admin/categories")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/catalog/admin/categories")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_SALES_STAFF"))))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/catalog/admin/categories")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/locations")).andExpect(status().isOk());
     }
 }

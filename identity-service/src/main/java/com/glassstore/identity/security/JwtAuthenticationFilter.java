@@ -1,5 +1,7 @@
 package com.glassstore.identity.security;
 
+import com.glassstore.identity.entity.User;
+import com.glassstore.identity.repository.UserRepository;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -17,6 +19,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Component
@@ -25,6 +28,7 @@ import java.util.stream.Collectors;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(
@@ -40,24 +44,33 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 if ("ACCESS".equals(tokenType)) {
                     Claims claims = jwtTokenProvider.getClaimsFromToken(jwt);
                     Long userId = Long.parseLong(claims.getSubject());
-                    String email = claims.get("email", String.class);
-                    String username = claims.get("username", String.class);
+                    Integer claimedTokenVersion = claims.get("tokenVersion", Integer.class);
+                    Optional<User> persistedUser = userRepository.findById(userId);
+                    boolean tokenVersionValid = persistedUser
+                            .map(u -> "ACTIVE".equalsIgnoreCase(u.getStatus())
+                                    && (claimedTokenVersion == null || u.getTokenVersion() == claimedTokenVersion))
+                            .orElse(true);
 
-                    List<String> roles = jwtTokenProvider.getRolesFromToken(jwt);
-                    List<SimpleGrantedAuthority> authorities = (roles != null)
-                            ? roles.stream().map(SimpleGrantedAuthority::new).collect(Collectors.toList())
-                            : List.of();
+                    if (tokenVersionValid) {
+                        String email = claims.get("email", String.class);
+                        String username = claims.get("username", String.class);
 
-                    UserPrincipal principal = new UserPrincipal(userId, username != null ? username : email, email, authorities);
+                        List<String> roles = jwtTokenProvider.getRolesFromToken(jwt);
+                        List<SimpleGrantedAuthority> authorities = (roles != null)
+                                ? roles.stream().map(SimpleGrantedAuthority::new).collect(Collectors.toList())
+                                : List.of();
 
-                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                            principal,
-                            null,
-                            authorities
-                    );
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        UserPrincipal principal = new UserPrincipal(userId, username != null ? username : email, email, authorities);
 
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                                principal,
+                                null,
+                                authorities
+                        );
+                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+                    }
                 }
             }
         } catch (Exception ex) {

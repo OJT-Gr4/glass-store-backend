@@ -150,6 +150,13 @@ class PaymentSafetyIntegrationTest {
     }
 
     @Test void verifiedPaymentPersistsWhenLabIsUnavailable() {
+        var prescription = new HashMap<String, Object>();
+        prescription.put("id", 7L); prescription.put("customerId", 10L); prescription.put("version", 0L);
+        for (String field : List.of("odSph", "odCyl", "odAxis", "odAdd", "osSph", "osCyl", "osAxis", "osAdd"))
+            prescription.put(field, 0);
+        prescription.put("pd", 63);
+        when(labDetails.getPrescriptionById(7L))
+                .thenReturn(org.springframework.http.ResponseEntity.ok(Map.of("data", prescription)));
         var request=request("ONLINE","VNPAY");request.setOrderType("LENS_ONLY");request.setPrescriptionId(7L);
         request.getItems().get(0).setSku("LNS-QA");request.getItems().get(0).setPrescriptionId(7L);
         var order=online.checkout(request,key()).order();

@@ -71,6 +71,30 @@ public class LabJobServiceImpl implements LabJobService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<LabJobResponse> getLabJobsByOrderId(Long orderId) {
+        if (orderId == null) {
+            return Collections.emptyList();
+        }
+        List<LabJob> jobs = labJobRepository.findAllByOrderIdOrderByIdAsc(orderId);
+        if (jobs.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Set<Long> prescriptionIds = jobs.stream()
+                .map(LabJob::getPrescriptionId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, Prescription> prescriptions = prescriptionIds.isEmpty()
+                ? Collections.emptyMap()
+                : prescriptionRepository.findAllById(prescriptionIds).stream()
+                .collect(Collectors.toMap(Prescription::getId, prescription -> prescription, (left, right) -> left));
+
+        return jobs.stream()
+                .map(job -> LabJobResponse.from(job, prescriptions.get(job.getPrescriptionId())))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public LabJobResponse getLabJobById(Long id) {
         LabJob job = findJob(id);
         Prescription prescription = job.getPrescriptionId() == null

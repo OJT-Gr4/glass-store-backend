@@ -29,6 +29,7 @@ public interface InventoryBalanceRepository extends JpaRepository<InventoryBalan
             @Param("locationCode") String locationCode);
 
     boolean existsByVariant_IdAndLocation_Id(Long variantId, Long locationId);
+    boolean existsByLocation_Id(Long locationId);
 
     @Modifying
     @Query("""

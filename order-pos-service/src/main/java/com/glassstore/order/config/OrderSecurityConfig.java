@@ -19,6 +19,7 @@ public class OrderSecurityConfig {
                 .requestMatchers("/error").permitAll()
                 .requestMatchers(HttpMethod.POST,"/api/payments/callback").permitAll()
                 .requestMatchers("/internal/warranty-items/**").hasRole("SERVICE")
+                .requestMatchers("/internal/location-references/**").hasRole("SERVICE")
                 .requestMatchers(HttpMethod.GET,"/api/orders/*/history","/api/orders/*/warranty-activations").hasAnyRole("ADMIN","SALES_STAFF")
                 .requestMatchers(HttpMethod.GET,"/api/orders","/api/orders/**").hasAnyRole("ADMIN","SALES_STAFF","CUSTOMER")
                 .requestMatchers(HttpMethod.POST,"/api/orders","/api/orders/*/cancel-request").hasAnyRole("ADMIN","SALES_STAFF","CUSTOMER")

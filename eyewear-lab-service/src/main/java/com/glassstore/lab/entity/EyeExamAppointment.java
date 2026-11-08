@@ -3,6 +3,7 @@ package com.glassstore.lab.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -79,6 +80,12 @@ public class EyeExamAppointment {
 
     @Column(name = "scheduled_time")
     private String scheduledTime;
+
+    @Column(name = "scheduled_date")
+    private LocalDate scheduledDate;
+
+    @Column(name = "location_code", length = 32)
+    private String locationCode;
 
     @Column(name = "notes")
     private String notes;

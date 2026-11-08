@@ -19,6 +19,8 @@ public interface StockTransferRepository extends JpaRepository<StockTransfer, Lo
     @EntityGraph(attributePaths = {"sourceLocation", "destinationLocation", "items"})
     List<StockTransfer> findAllByOrderByCreatedAtDesc();
 
+    boolean existsBySourceLocation_IdOrDestinationLocation_Id(Long sourceLocationId, Long destinationLocationId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select distinct t from StockTransfer t left join fetch t.items where t.id = :id")
     Optional<StockTransfer> findByIdForUpdate(@Param("id") Long id);

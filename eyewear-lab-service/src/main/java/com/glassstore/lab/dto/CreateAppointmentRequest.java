@@ -7,6 +7,7 @@ import lombok.Data;
 @Data
 public class CreateAppointmentRequest {
     @Positive private Long customerId;
+    @Size(max = 32) private String locationCode;
     @NotBlank @Size(max = 80) private String scheduledTime;
     @Size(max = 30) private String customerPhone;
     @Size(max = 100) private String roomName;

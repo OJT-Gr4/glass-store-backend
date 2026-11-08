@@ -43,6 +43,8 @@ class OrderAccessSecurityTest {
     private Order save(Long customer) {
         return orders.saveAndFlush(Order.builder().orderCode("QA-ACCESS-"+System.nanoTime()).customerId(customer)
             .customerName("QA").customerPhone("0901234567").channel(SalesChannel.ONLINE).orderType(OrderType.FRAME_ONLY)
+            .branchCode(customer == 10L ? "BRANCH_01" : null)
+            .branchName(customer == 10L ? "Flagship" : null)
             .status(OrderStatus.PAID).totalAmount(BigDecimal.TEN).finalAmount(BigDecimal.TEN).build());
     }
     static String token(String role,String type,Instant expires,String key) {
@@ -98,5 +100,12 @@ class OrderAccessSecurityTest {
             .header("Authorization","Bearer "+ServiceTokenIssuer.issue(KEY,"eyewear-lab-service"))).andExpect(status().isOk());
         mvc.perform(get("/api/orders").header("Authorization","Bearer "+ServiceTokenIssuer.issue(KEY,"eyewear-lab-service")))
             .andExpect(status().isForbidden());
+    }
+    @Test void onlyInternalServicesCanCheckOrderLocationReferences() throws Exception {
+        mvc.perform(get("/internal/location-references/BRANCH_01").param("name","Flagship")
+            .header("Authorization",customer())).andExpect(status().isForbidden());
+        mvc.perform(get("/internal/location-references/BRANCH_01").param("name","Flagship")
+            .header("Authorization","Bearer "+ServiceTokenIssuer.issue(KEY,"catalog-service")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data").value(true));
     }
 }

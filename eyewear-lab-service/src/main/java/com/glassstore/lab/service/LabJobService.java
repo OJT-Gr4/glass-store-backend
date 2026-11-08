@@ -14,6 +14,8 @@ public interface LabJobService {
 
     List<LabJobResponse> getLabJobs(LabJobStatus status);
 
+    List<LabJobResponse> getLabJobsByOrderId(Long orderId);
+
     LabJobResponse getLabJobById(Long id);
 
     LabJobResponse updateJobStatus(Long id, UpdateJobStatusRequest request);

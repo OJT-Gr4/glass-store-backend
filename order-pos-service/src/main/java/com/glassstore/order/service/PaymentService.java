@@ -175,6 +175,41 @@ public class PaymentService {
         return order;
     }
 
+    @Transactional
+    public Order confirmRefund(Long orderId, String actor, String reason) {
+        Order order = orderRepository.lockById(orderId)
+                .orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID: " + orderId));
+        if (order.currentStatus() == OrderStatus.REFUNDED && "CONFIRMED".equals(order.getRefundStatus())) {
+            return order;
+        }
+        if (order.currentStatus() != OrderStatus.REFUND_PENDING && order.currentStatus() != OrderStatus.CANCELLED) {
+            throw ApiException.of(ErrorCode.ORDER_INVALID_TRANSITION,
+                    "Chỉ có thể xác nhận hoàn tiền khi đơn ở trạng thái REFUND_PENDING hoặc CANCELLED");
+        }
+        String effectiveActor = (actor == null || actor.isBlank()) ? "STAFF" : actor;
+        String effectiveReason = (reason == null || reason.isBlank())
+                ? "Xác nhận đã hoàn tiền thủ công cho khách hàng"
+                : reason.trim();
+
+        order.setRefundStatus("CONFIRMED");
+        order.setRefundConfirmedBy(effectiveActor);
+        order.setRefundConfirmedAt(LocalDateTime.now());
+        if (order.currentStatus() == OrderStatus.REFUND_PENDING) {
+            order = orderStatusService.transition(order, OrderStatus.REFUNDED, effectiveActor, effectiveReason);
+        } else {
+            orderRepository.save(order);
+        }
+
+        paymentRepository.findByOrderIdOrderByCreatedAtDesc(orderId).forEach(payment -> {
+            if (payment.getStatus() == PaymentStatus.SUCCESS || payment.getStatus() == PaymentStatus.REFUND_PENDING) {
+                payment.setStatus(PaymentStatus.REFUNDED);
+                payment.setUpdatedAt(LocalDateTime.now());
+                paymentRepository.save(payment);
+            }
+        });
+        return order;
+    }
+
     private Order requireOrder(Long orderId) {
         return orderRepository.findById(orderId)
                 .orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND,

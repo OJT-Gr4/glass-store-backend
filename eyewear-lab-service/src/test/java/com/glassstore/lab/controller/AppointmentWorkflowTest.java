@@ -34,6 +34,38 @@ class AppointmentWorkflowTest {
     @Autowired EyeExamAppointmentRepository appointments;
     @Autowired PrescriptionRepository prescriptions;
     @MockBean PrescriptionCustomerClient customers;
+    @MockBean com.glassstore.lab.client.CatalogLocationClient locations;
+
+    @Test void validatesLocationAndPreservesTheVerifiedBookingWorkflow() throws Exception {
+        when(customers.requireCustomer(10L)).thenReturn("Verified Customer");
+        when(locations.requireActiveLocation("branch_01")).thenReturn("BRANCH_01");
+        mvc.perform(post("/api/appointments").with(actor(10, "CUSTOMER"))
+                .contentType("application/json").content("""
+                {"locationCode":"branch_01","scheduledTime":"2099-11-09T09:00",
+                 "scheduledDate":"2000-01-01","customerId":999,"status":"COMPLETED"}
+                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.locationCode").value("BRANCH_01"))
+                .andExpect(jsonPath("$.data.scheduledDate").value("2099-11-09"))
+                .andExpect(jsonPath("$.data.customerId").value(10))
+                .andExpect(jsonPath("$.data.status").value("WAITING"));
+        mvc.perform(get("/api/appointments/location/BRANCH_01/exists").with(actor(1, "SERVICE")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").value(true));
+    }
+
+    @Test void invalidOrUnavailableLocationCannotCreateAppointment() throws Exception {
+        when(customers.requireCustomer(10L)).thenReturn("Verified Customer");
+        long count = appointments.count();
+        for (HttpStatus failure : new HttpStatus[]{HttpStatus.BAD_REQUEST, HttpStatus.SERVICE_UNAVAILABLE}) {
+            doThrow(new ResponseStatusException(failure, "Cannot verify location"))
+                    .when(locations).requireActiveLocation("UNKNOWN");
+            mvc.perform(post("/api/appointments").with(actor(10, "CUSTOMER"))
+                    .contentType("application/json")
+                    .content("{\"locationCode\":\"UNKNOWN\",\"scheduledTime\":\"2099-11-09T09:00\"}"))
+                    .andExpect(status().is(failure.value()));
+        }
+        assertThat(appointments.count()).isEqualTo(count);
+    }
 
     RequestPostProcessor actor(long id, String role) {
         return jwt().jwt(j -> j.subject(Long.toString(id)).claim("userId", id).claim("username", "actor-" + id))

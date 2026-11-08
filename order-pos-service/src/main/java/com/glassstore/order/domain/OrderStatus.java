@@ -57,7 +57,7 @@ public enum OrderStatus {
             Map.entry(PREPARING, EnumSet.of(SHIPPING, READY_FOR_PICKUP, CANCEL_REQUESTED, REFUND_PENDING)),
             Map.entry(SHIPPING, EnumSet.of(COMPLETED)),
             Map.entry(READY_FOR_PICKUP, EnumSet.of(COMPLETED)),
-            Map.entry(CANCEL_REQUESTED, EnumSet.of(CANCELLED, REFUND_PENDING, CONFIRMED)),
+            Map.entry(CANCEL_REQUESTED, EnumSet.of(CANCELLED, REFUND_PENDING, PENDING_PAYMENT, PAID, LAB_DISPATCH_FAILED, PENDING_CONFIRMATION, CONFIRMED)),
             Map.entry(REFUND_PENDING, EnumSet.of(REFUNDED)),
             Map.entry(COMPLETED, EnumSet.noneOf(OrderStatus.class)),
             Map.entry(CANCELLED, EnumSet.noneOf(OrderStatus.class)),

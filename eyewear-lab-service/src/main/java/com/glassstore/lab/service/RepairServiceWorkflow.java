@@ -25,7 +25,7 @@ import java.util.Objects;
 import java.util.Set;
 
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 public class RepairServiceWorkflow {
     public RepairServiceWorkflow(RepairServiceRepository repairRepository, RepairServiceStatusHistoryRepository historyRepository) {
         this(repairRepository, historyRepository, null);

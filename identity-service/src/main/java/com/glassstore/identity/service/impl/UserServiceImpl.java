@@ -265,6 +265,7 @@ public class UserServiceImpl implements UserService {
                 .fullName(user.getFullName())
                 .email(user.getEmail())
                 .phoneNumber(user.getPhoneNumber())
+                .phoneVerified(user.isPhoneVerified())
                 .employeeCode(user.getEmployeeCode())
                 .branchName(user.getBranchName())
                 .roles(roleNames)
@@ -288,6 +289,11 @@ public class UserServiceImpl implements UserService {
         Long userId = jwtTokenProvider.getUserIdFromToken(refreshToken);
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BadCredentialsException("Người dùng không tồn tại!"));
+
+        Integer tokenVersion = jwtTokenProvider.getClaimsFromToken(refreshToken).get("tokenVersion", Integer.class);
+        if (tokenVersion != null && tokenVersion != user.getTokenVersion()) {
+            throw new BadCredentialsException("Phiên đăng nhập đã hết hiệu lực do mật khẩu đã thay đổi!");
+        }
 
         if (!"ACTIVE".equalsIgnoreCase(user.getStatus())) {
             throw new com.glassstore.identity.exception.AccountLockedException("Tài khoản đang bị tạm khóa!");
@@ -328,6 +334,7 @@ public class UserServiceImpl implements UserService {
                 .email(user.getEmail())
                 .fullName(user.getFullName())
                 .phoneNumber(user.getPhoneNumber())
+                .phoneVerified(user.isPhoneVerified())
                 .employeeCode(user.getEmployeeCode())
                 .branchName(user.getBranchName())
                 .status(user.getStatus())

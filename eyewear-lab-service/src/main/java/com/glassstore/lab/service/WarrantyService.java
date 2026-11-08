@@ -10,23 +10,47 @@ import com.glassstore.lab.dto.WarrantyActivationRequest;
 import com.glassstore.lab.dto.WarrantyLookupItemDTO;
 import com.glassstore.lab.dto.WarrantyOrderItemDTO;
 import com.glassstore.lab.entity.Warranty;
+import com.glassstore.lab.entity.WarrantyPolicy;
+import com.glassstore.lab.repository.WarrantyPolicyRepository;
 import com.glassstore.lab.repository.WarrantyRepository;
 import feign.FeignException;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class WarrantyService {
 
     private final WarrantyRepository warrantyRepository;
     private final WarrantyOrderClient orderClient;
     private final WarrantyCatalogClient catalogClient;
+    private final WarrantyPolicyRepository policyRepository;
+
+    public WarrantyService(
+            WarrantyRepository warrantyRepository,
+            WarrantyOrderClient orderClient,
+            WarrantyCatalogClient catalogClient) {
+        this(warrantyRepository, orderClient, catalogClient, null);
+    }
+
+    @Autowired
+    public WarrantyService(
+            WarrantyRepository warrantyRepository,
+            WarrantyOrderClient orderClient,
+            WarrantyCatalogClient catalogClient,
+            WarrantyPolicyRepository policyRepository) {
+        this.warrantyRepository = warrantyRepository;
+        this.orderClient = orderClient;
+        this.catalogClient = catalogClient;
+        this.policyRepository = policyRepository;
+    }
 
     @Transactional
     public Warranty activate(WarrantyActivationRequest request) {
@@ -43,12 +67,18 @@ public class WarrantyService {
         CatalogVariantInfo variant = getVariantBySku(item.productSku());
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime purchaseDate = item.purchaseDate() == null ? now : item.purchaseDate();
-        boolean lensCoating = "LENS_COATING".equals(request.benefitType());
-        boolean exchange = "EXCHANGE_30_DAYS".equals(request.benefitType());
-        LocalDateTime expiresAt = lensCoating || exchange ? purchaseDate.plusDays(30) : null;
+        WarrantyPolicy activePolicy = resolvePolicy(request.benefitType());
+
+        Integer durationDays = activePolicy.getDurationDays();
+        LocalDateTime expiresAt = (durationDays != null && durationDays > 0)
+                ? purchaseDate.plusDays(durationDays)
+                : null;
         String status = expiresAt != null && expiresAt.isBefore(now) ? "EXPIRED" : "ACTIVE";
         String statusLabel = "EXPIRED".equals(status) ? "Đã hết hạn" : "Đang hiệu lực";
-        String policy = exchange ? "EXCHANGE_30_DAYS" : lensCoating ? "LENS_COATING_30_DAYS" : "FRAME_ADJUSTMENT_LIFETIME";
+        String policy = activePolicy.getVersion() != null && activePolicy.getVersion() > 1
+                ? activePolicy.getPolicyCode() + "_V" + activePolicy.getVersion()
+                : activePolicy.getPolicyCode();
+        String coverageTerms = activePolicy.getCoverageTerms();
 
         warrantyRepository.insertIfMissing(
                 "WAR-" + UUID.randomUUID(),
@@ -64,9 +94,7 @@ public class WarrantyService {
                 item.customerPhone(),
                 item.productName(),
                 item.productSku(),
-                exchange ? "Đổi 1–1 trong 30 ngày từ ngày mua, sau khi kiểm tra điều kiện bảo hành"
-                        : lensCoating ? "Thay thế một lần khi lớp phủ tròng kính bong/tróc do lỗi thuộc phạm vi bảo hành"
-                        : "Hỗ trợ điều chỉnh gọng kính trọn đời",
+                coverageTerms,
                 policy,
                 status,
                 statusLabel,
@@ -74,6 +102,102 @@ public class WarrantyService {
                 now);
         return warrantyRepository.findByOrderItemIdAndBenefitType(item.orderItemId(), request.benefitType())
                 .orElseThrow(() -> new IllegalStateException("Không thể đọc lại bản ghi bảo hành vừa tạo"));
+    }
+
+    @Transactional(readOnly = true)
+    public List<WarrantyPolicy> getActivePolicies() {
+        List<WarrantyPolicy> defaults = List.of(
+                defaultPolicy("EXCHANGE_30_DAYS"),
+                defaultPolicy("LENS_COATING"),
+                defaultPolicy("FRAME_ADJUSTMENT")
+        );
+        if (policyRepository == null) {
+            return defaults;
+        }
+        return defaults.stream()
+                .map(def -> policyRepository.findFirstByBenefitTypeAndActiveTrueOrderByVersionDesc(def.getBenefitType())
+                        .orElse(def))
+                .toList();
+    }
+
+    @Transactional
+    public WarrantyPolicy savePolicyVersion(
+            String benefitType,
+            Integer durationDays,
+            String coverageTerms,
+            BigDecimal serviceFee,
+            String actor) {
+        if (policyRepository == null) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Chưa cấu hình kho chính sách bảo hành");
+        }
+        if (benefitType == null || benefitType.isBlank()) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Loại quyền lợi bảo hành không được để trống");
+        }
+        String normalizedBenefit = benefitType.trim().toUpperCase(Locale.ROOT);
+        if (coverageTerms == null || coverageTerms.isBlank()) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Điều kiện bảo hành không được để trống");
+        }
+        if (durationDays != null && durationDays < 0) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Thời hạn bảo hành (ngày) không được âm");
+        }
+
+        WarrantyPolicy current = resolvePolicy(normalizedBenefit);
+        int nextVersion = 1;
+        Optional<WarrantyPolicy> existingActive = policyRepository
+                .findFirstByBenefitTypeAndActiveTrueOrderByVersionDesc(normalizedBenefit);
+        if (existingActive.isPresent()) {
+            WarrantyPolicy prev = existingActive.get();
+            nextVersion = (prev.getVersion() != null ? prev.getVersion() : 1) + 1;
+            prev.setActive(false);
+            policyRepository.save(prev);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        WarrantyPolicy created = WarrantyPolicy.builder()
+                .policyCode(current.getPolicyCode())
+                .benefitType(normalizedBenefit)
+                .version(nextVersion)
+                .durationDays(durationDays)
+                .coverageTerms(coverageTerms.trim())
+                .eligibleSkuPrefixes(current.getEligibleSkuPrefixes())
+                .serviceFee(serviceFee != null ? serviceFee : BigDecimal.ZERO)
+                .effectiveFrom(now)
+                .active(true)
+                .updatedBy(actor == null || actor.isBlank() ? "ADMIN" : actor)
+                .createdAt(now)
+                .build();
+        return policyRepository.save(created);
+    }
+
+    private WarrantyPolicy resolvePolicy(String benefitType) {
+        String normalized = benefitType == null ? "" : benefitType.trim().toUpperCase(Locale.ROOT);
+        if (policyRepository != null) {
+            Optional<WarrantyPolicy> configured = policyRepository
+                    .findFirstByBenefitTypeAndActiveTrueOrderByVersionDesc(normalized);
+            if (configured.isPresent()) {
+                return configured.get();
+            }
+        }
+        return defaultPolicy(normalized);
+    }
+
+    private WarrantyPolicy defaultPolicy(String benefitType) {
+        boolean lensCoating = "LENS_COATING".equals(benefitType);
+        boolean exchange = "EXCHANGE_30_DAYS".equals(benefitType);
+        return WarrantyPolicy.builder()
+                .policyCode(exchange ? "EXCHANGE_30_DAYS" : lensCoating ? "LENS_COATING_30_DAYS" : "FRAME_ADJUSTMENT_LIFETIME")
+                .benefitType(benefitType)
+                .version(1)
+                .durationDays(lensCoating || exchange ? 30 : null)
+                .coverageTerms(exchange
+                        ? "Đổi 1–1 trong 30 ngày từ ngày mua, sau khi kiểm tra điều kiện bảo hành"
+                        : lensCoating
+                        ? "Thay thế một lần khi lớp phủ tròng kính bong/tróc do lỗi thuộc phạm vi bảo hành"
+                        : "Hỗ trợ điều chỉnh gọng kính trọn đời")
+                .eligibleSkuPrefixes(exchange ? "FRM-,LNS-,LZ-" : lensCoating ? "LNS-,LZ-" : "FRM-")
+                .serviceFee(BigDecimal.ZERO)
+                .active(true)
+                .build();
     }
 
     @Transactional(readOnly = true)

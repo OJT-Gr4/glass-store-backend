@@ -36,7 +36,7 @@ spring:
         - id: catalog-service
           uri: ${CATALOG_SERVICE_URL:http://127.0.0.1:${CATALOG_PORT:8082}}
           predicates:
-            - Path=/api/catalog/**, /api/products/**, /api/categories/**, /api/inventory, /api/inventory/**
+            - Path=/api/catalog/**, /api/products/**, /api/categories/**, /api/locations, /api/inventory, /api/inventory/**
 
         # Route 3: order-pos-service (Port 8083)
         - id: order-pos-service

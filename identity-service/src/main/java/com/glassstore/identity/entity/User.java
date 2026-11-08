@@ -46,6 +46,12 @@ public class User {
     @Column(name = "lockout_expiration")
     private LocalDateTime lockoutExpiration;
 
+    @Column(name = "phone_verified", nullable = false, columnDefinition = "boolean default false")
+    private boolean phoneVerified = false;
+
+    @Column(name = "token_version", nullable = false, columnDefinition = "int default 0")
+    private int tokenVersion = 0;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "user_roles",
@@ -95,6 +101,8 @@ public class User {
         private String status = "ACTIVE";
         private int failedAttempts = 0;
         private LocalDateTime lockoutExpiration;
+        private boolean phoneVerified = false;
+        private int tokenVersion = 0;
         private Set<Role> roles = new HashSet<>();
 
         public UserBuilder id(Long id) { this.id = id; return this; }
@@ -108,9 +116,14 @@ public class User {
         public UserBuilder status(String status) { this.status = status; return this; }
         public UserBuilder failedAttempts(int failedAttempts) { this.failedAttempts = failedAttempts; return this; }
         public UserBuilder lockoutExpiration(LocalDateTime lockoutExpiration) { this.lockoutExpiration = lockoutExpiration; return this; }
+        public UserBuilder phoneVerified(boolean phoneVerified) { this.phoneVerified = phoneVerified; return this; }
+        public UserBuilder tokenVersion(int tokenVersion) { this.tokenVersion = tokenVersion; return this; }
         public UserBuilder roles(Set<Role> roles) { this.roles = roles; return this; }
         public User build() {
-            return new User(id, username, email, passwordHash, fullName, phoneNumber, employeeCode, branchName, status, failedAttempts, lockoutExpiration, roles);
+            User u = new User(id, username, email, passwordHash, fullName, phoneNumber, employeeCode, branchName, status, failedAttempts, lockoutExpiration, roles);
+            u.setPhoneVerified(phoneVerified);
+            u.setTokenVersion(tokenVersion);
+            return u;
         }
     }
 
@@ -136,6 +149,10 @@ public class User {
     public void setFailedAttempts(int failedAttempts) { this.failedAttempts = failedAttempts; }
     public LocalDateTime getLockoutExpiration() { return lockoutExpiration; }
     public void setLockoutExpiration(LocalDateTime lockoutExpiration) { this.lockoutExpiration = lockoutExpiration; }
+    public boolean isPhoneVerified() { return phoneVerified; }
+    public void setPhoneVerified(boolean phoneVerified) { this.phoneVerified = phoneVerified; }
+    public int getTokenVersion() { return tokenVersion; }
+    public void setTokenVersion(int tokenVersion) { this.tokenVersion = tokenVersion; }
     public Set<Role> getRoles() { return roles; }
     public void setRoles(Set<Role> roles) { this.roles = roles; }
     public LocalDateTime getCreatedAt() { return createdAt; }

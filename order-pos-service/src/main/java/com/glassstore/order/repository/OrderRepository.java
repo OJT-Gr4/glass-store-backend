@@ -35,4 +35,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findByPosSessionIdOrderByCreatedAtDesc(Long posSessionId);
 
     long countByCustomerIdAndStatusNot(Long customerId, OrderStatus status);
+
+    boolean existsByBranchCodeIgnoreCaseOrBranchNameIgnoreCase(String branchCode, String branchName);
 }

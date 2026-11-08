@@ -49,7 +49,8 @@ public class InventoryService {
     @Transactional(readOnly = true)
     public List<InventoryLocationDTO> getLocations() {
         return locationRepository.findAllByActiveTrueOrderByCodeAsc().stream()
-                .map(location -> new InventoryLocationDTO(location.getCode(), location.getName()))
+                .map(location -> new InventoryLocationDTO(
+                        location.getCode(), location.getName(), location.getArea(), location.getLocationType()))
                 .toList();
     }
 

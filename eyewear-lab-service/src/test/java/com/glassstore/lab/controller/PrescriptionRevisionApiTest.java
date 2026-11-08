@@ -120,7 +120,8 @@ class PrescriptionRevisionApiTest extends PrescriptionRevisionTestSupport {
                         .contentType("application/json").content(request().toString())).andExpect(status().isBadRequest());
         mvc.perform(patch("/api/prescriptions/" + id).with(actor(101, "OPTOMETRIST"))
                         .contentType("application/json").content(update(0, -3).toString())).andExpect(status().isBadRequest());
-        when(customers.requireCustomer(customerId)).thenThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Cannot verify customer"));
+        org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Cannot verify customer"))
+                .when(customers).requireCustomer(customerId);
         mvc.perform(patch("/api/prescriptions/" + id).with(actor(101, "OPTOMETRIST"))
                         .contentType("application/json").content(update(0, -3).toString())).andExpect(status().isServiceUnavailable());
         assertThat(prescriptions.count()).isEqualTo(count);

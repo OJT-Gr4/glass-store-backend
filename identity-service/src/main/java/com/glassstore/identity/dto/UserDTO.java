@@ -15,6 +15,7 @@ public class UserDTO {
     private String email;
     private String fullName;
     private String phoneNumber;
+    private boolean phoneVerified;
     private String employeeCode;
     private String branchName;
     private String status;

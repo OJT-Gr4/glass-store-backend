@@ -90,6 +90,48 @@ class WarrantyServiceTest {
     }
 
     @Test
+    void policyVersioningSnapshotsNewDurationWithoutMutatingPreviouslyActivatedWarranties() {
+        var policyRepo = mock(com.glassstore.lab.repository.WarrantyPolicyRepository.class);
+        var versionedService = new WarrantyService(warrantyRepository, orderClient, catalogClient, policyRepo);
+
+        var oldPolicy = com.glassstore.lab.entity.WarrantyPolicy.builder()
+                .policyCode("LENS_COATING_30_DAYS")
+                .benefitType("LENS_COATING")
+                .version(1)
+                .durationDays(30)
+                .coverageTerms("Bảo hành lớp phủ 30 ngày")
+                .active(true)
+                .build();
+        when(policyRepo.findFirstByBenefitTypeAndActiveTrueOrderByVersionDesc("LENS_COATING"))
+                .thenReturn(Optional.of(oldPolicy));
+        when(policyRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var newPolicy = versionedService.savePolicyVersion(
+                "LENS_COATING", 60, "Bảo hành lớp phủ nâng cấp 60 ngày", java.math.BigDecimal.ZERO, "admin");
+        assertThat(newPolicy.getVersion()).isEqualTo(2);
+        assertThat(newPolicy.getDurationDays()).isEqualTo(60);
+        assertThat(oldPolicy.isActive()).isFalse();
+
+        when(policyRepo.findFirstByBenefitTypeAndActiveTrueOrderByVersionDesc("LENS_COATING"))
+                .thenReturn(Optional.of(newPolicy));
+        Warranty savedV2 = Warranty.builder().id(11L).orderItemId(19L).benefitType("LENS_COATING").policyRef("LENS_COATING_30_DAYS_V2").build();
+        when(warrantyRepository.findByOrderItemIdAndBenefitType(19L, "LENS_COATING"))
+                .thenReturn(Optional.empty(), Optional.of(savedV2));
+
+        Warranty activated = versionedService.activate(new WarrantyActivationRequest(5L, 19L, "LENS_COATING"));
+        assertThat(activated.getPolicyRef()).isEqualTo("LENS_COATING_30_DAYS_V2");
+
+        var expiry = org.mockito.ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(warrantyRepository).insertIfMissing(
+                anyString(), eq("ORD-5"), eq(5L), eq(19L), eq("LENS_COATING"),
+                any(LocalDateTime.class), expiry.capture(), eq("89300001"),
+                eq(8L), eq("Khách hàng"), eq("0901234567"), eq("Lens coating"),
+                eq("LNS-COAT-1"), eq("Bảo hành lớp phủ nâng cấp 60 ngày"), eq("LENS_COATING_30_DAYS_V2"),
+                anyString(), anyString(), any(LocalDateTime.class), any(LocalDateTime.class));
+        assertThat(expiry.getValue()).isEqualTo(orderClient.getPurchaseItem(5L, 19L).purchaseDate().plusDays(60));
+    }
+
+    @Test
     void rejectsBenefitThatDoesNotMatchPurchasedItem() {
         assertThatThrownBy(() -> service.activate(
                 new WarrantyActivationRequest(5L, 19L, "FRAME_ADJUSTMENT")))

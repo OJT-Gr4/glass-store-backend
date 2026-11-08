@@ -1,6 +1,12 @@
 server:
   port: ${CATALOG_PORT:8082}
 
+services:
+  order-pos-service:
+    url: ${ORDER_POS_SERVICE_URL:http://127.0.0.1:${ORDER_PORT:8083}}
+  eyewear-lab-service:
+    url: ${EYEWEAR_LAB_SERVICE_URL:http://127.0.0.1:${LAB_PORT:8084}}
+
 spring:
   config:
     import: optional:file:./.env[.properties],optional:file:../.env[.properties],optional:file:./backend/.env[.properties]

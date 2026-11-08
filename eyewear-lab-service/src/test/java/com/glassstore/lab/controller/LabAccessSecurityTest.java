@@ -28,6 +28,7 @@ class LabAccessSecurityTest {
     @Autowired LabJobHistoryRepository jobHistory;
     @MockBean com.glassstore.lab.config.LabDataInitializer demoSeed;
     @MockBean com.glassstore.lab.client.PrescriptionCustomerClient customerClient;
+    @MockBean com.glassstore.lab.client.CatalogLocationClient locationClient;
     Prescription mine,other;
     Warranty otherWarranty;
     EyeExamAppointment otherAppointment;
@@ -41,7 +42,7 @@ class LabAccessSecurityTest {
             .osSph(BigDecimal.ZERO).osCyl(BigDecimal.ZERO).osAxis(0).osAdd(BigDecimal.ZERO)
             .pd(new BigDecimal("63")).build());
         other=prescriptions.saveAndFlush(Prescription.builder().customerId(20L).customerName("QA other").optometristId(1L).odSph(BigDecimal.ZERO).osSph(BigDecimal.ZERO).pd(new BigDecimal("63")).build());
-        otherAppointment=appointments.saveAndFlush(EyeExamAppointment.builder().ticketCode("QA-OTHER").customerId(20L).customerName("QA other").status("WAITING").build());
+        otherAppointment=appointments.saveAndFlush(EyeExamAppointment.builder().ticketCode("QA-OTHER").customerId(20L).customerName("QA other").status("WAITING").locationCode("BRANCH_01").build());
         otherWarranty=warranties.saveAndFlush(Warranty.builder().warrantyCode("QA-WAR").customerId(20L).customerName("QA other").productName("QA frame").status("ACTIVE").build());
     }
     @Test void unauthenticatedReadsAreRejected() throws Exception {
@@ -79,6 +80,24 @@ class LabAccessSecurityTest {
             .content("{\"id\":"+otherAppointment.getId()+",\"customerId\":20,\"customerName\":\"QA\",\"status\":\"COMPLETED\",\"scheduledTime\":\"2099-11-09T09:00\"}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.customerId").value(10)).andExpect(jsonPath("$.data.status").value("WAITING"));
         org.junit.jupiter.api.Assertions.assertEquals(20L,appointments.findById(otherAppointment.getId()).orElseThrow().getCustomerId());
+    }
+    @Test void customerBookingPersistsActiveLocationAndScheduledDate() throws Exception {
+        org.mockito.Mockito.when(customerClient.requireCustomer(10L)).thenReturn("QA verified");
+        org.mockito.Mockito.when(locationClient.requireActiveLocation("BRANCH_01")).thenReturn("BRANCH_01");
+        mvc.perform(post("/api/appointments").with(role("CUSTOMER")).contentType("application/json")
+            .content("{\"customerPhone\":\"0900000000\",\"locationCode\":\"BRANCH_01\",\"scheduledTime\":\"2099-11-09T09:45\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.customerId").value(10))
+            .andExpect(jsonPath("$.data.locationCode").value("BRANCH_01"))
+            .andExpect(jsonPath("$.data.scheduledDate").value("2099-11-09"))
+            .andExpect(jsonPath("$.data.scheduledTime").value("2099-11-09T09:45"));
+        org.mockito.Mockito.verify(locationClient).requireActiveLocation("BRANCH_01");
+    }
+    @Test void onlyInternalServiceCanCheckLocationAppointmentReferences() throws Exception {
+        mvc.perform(get("/api/appointments/location/BRANCH_01/exists").with(role("CUSTOMER")))
+            .andExpect(status().isForbidden());
+        mvc.perform(get("/api/appointments/location/BRANCH_01/exists").with(role("SERVICE")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data").value(true));
     }
     @Test void authenticatedServiceCanCreateAndLookUpTheExactOrdersJob() throws Exception {
         mvc.perform(post("/api/lab-jobs/from-order").with(role("SERVICE")).contentType("application/json")

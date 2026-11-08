@@ -11,4 +11,5 @@ import java.util.Optional;
 public interface EyeExamAppointmentRepository extends JpaRepository<EyeExamAppointment, Long> {
     Optional<EyeExamAppointment> findByTicketCode(String ticketCode);
     List<EyeExamAppointment> findAllByOrderByPriorityLevelAscCreatedAtAsc();
+    boolean existsByLocationCodeIgnoreCase(String locationCode);
 }
