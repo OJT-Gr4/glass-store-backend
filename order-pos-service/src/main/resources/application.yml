@@ -26,8 +26,6 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
 
-# Cấu hình Feign Client trỏ sang Lab Service và Catalog Service
-
 jwt:
   secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
 
@@ -35,3 +33,19 @@ glassstore:
   demo:
     seed:
       enabled: ${DEMO_SEED_ENABLED:false}
+
+payment:
+  sandbox:
+    enabled: ${PAYMENT_SANDBOX_ENABLED:true}
+    provider: ${PAYMENT_SANDBOX_PROVIDER:VIETQR}
+    secret-key: ${PAYMENT_SANDBOX_SECRET:GlassStoreSandboxSecretKey20261110!@#HMAC512}
+  vietqr:
+    bank-id: ${PAYMENT_VIETQR_BANK_ID:970422}
+    account-no: ${PAYMENT_VIETQR_ACCOUNT_NO:0987654321}
+    account-name: ${PAYMENT_VIETQR_ACCOUNT_NAME:OPTIVISION GLASS STORE}
+    template: ${PAYMENT_VIETQR_TEMPLATE:compact2}
+  vnpay:
+    tmn-code: ${PAYMENT_VNPAY_TMN_CODE:OPTIVIS1}
+    hash-secret: ${PAYMENT_VNPAY_HASH_SECRET:GlassStoreSandboxSecretKey20261110!@#HMAC512}
+    url: ${PAYMENT_VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+    return-url: ${PAYMENT_VNPAY_RETURN_URL:http://localhost:5173/payment-return}

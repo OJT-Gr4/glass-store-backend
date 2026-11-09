@@ -1,9 +1,11 @@
 package com.glassstore.identity.service.impl;
 
 import com.glassstore.identity.dto.*;
+import com.glassstore.identity.entity.CustomerInteraction;
 import com.glassstore.identity.entity.Role;
 import com.glassstore.identity.entity.User;
 import com.glassstore.identity.exception.EmailAlreadyExistsException;
+import com.glassstore.identity.repository.CustomerInteractionRepository;
 import com.glassstore.identity.repository.RoleRepository;
 import com.glassstore.identity.repository.UserRepository;
 import com.glassstore.identity.security.BruteForceService;
@@ -16,6 +18,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -26,6 +29,7 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final CustomerInteractionRepository interactionRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final BruteForceService bruteForceService;
@@ -105,7 +109,7 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public UserDTO createCustomer(CreateCustomerRequest request) {
         String email = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : null;
-        if (email != null && userRepository.findByEmail(email).isPresent()) {
+        if (email != null && !email.isEmpty() && userRepository.findByEmail(email).isPresent()) {
             throw new EmailAlreadyExistsException("Email '" + email + "' đã tồn tại trong hệ thống!");
         }
 
@@ -117,6 +121,9 @@ public class UserServiceImpl implements UserService {
         Role customerRole = roleRepository.findByName("ROLE_CUSTOMER")
                 .orElseGet(() -> roleRepository.save(Role.builder().name("ROLE_CUSTOMER").description("Khách hàng").build()));
 
+        boolean consent = Boolean.TRUE.equals(request.getMarketingConsent());
+        LocalDateTime consentTime = consent ? LocalDateTime.now() : null;
+
         User user = User.builder()
                 .username(username)
                 .email(email)
@@ -124,6 +131,10 @@ public class UserServiceImpl implements UserService {
                 .fullName(request.getFullName() != null ? request.getFullName() : "Khách Hàng")
                 .phoneNumber(request.getPhoneNumber())
                 .branchName(request.getAddress())
+                .address(request.getAddress())
+                .gender(request.getGender())
+                .marketingConsent(consent)
+                .marketingConsentUpdatedAt(consentTime)
                 .status("ACTIVE")
                 .roles(new HashSet<>(Collections.singletonList(customerRole)))
                 .build();
@@ -133,47 +144,154 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
+    public UserDTO updateCustomer(Long id, UpdateCustomerRequest request) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Không tìm thấy khách hàng với ID: " + id));
+
+        boolean isCustomer = user.getRoles().stream().anyMatch(r -> "ROLE_CUSTOMER".equals(r.getName()));
+        if (!isCustomer) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Tài khoản không phải hồ sơ khách hàng");
+        }
+
+        if (request.getFullName() != null && !request.getFullName().isBlank()) {
+            user.setFullName(request.getFullName().trim());
+        }
+        if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
+            user.setPhoneNumber(request.getPhoneNumber().trim());
+        }
+        if (request.getEmail() != null && !request.getEmail().isBlank()) {
+            String newEmail = request.getEmail().trim().toLowerCase();
+            if (!newEmail.equalsIgnoreCase(user.getEmail())) {
+                if (userRepository.findByEmail(newEmail).isPresent()) {
+                    throw new EmailAlreadyExistsException("Email '" + newEmail + "' đã tồn tại trên hệ thống!");
+                }
+                user.setEmail(newEmail);
+            }
+        }
+        if (request.getAddress() != null) {
+            user.setAddress(request.getAddress().trim());
+            user.setBranchName(request.getAddress().trim());
+        }
+        if (request.getGender() != null) {
+            user.setGender(request.getGender().trim());
+        }
+        if (request.getMarketingConsent() != null) {
+            boolean newConsent = request.getMarketingConsent();
+            if (user.isMarketingConsent() != newConsent) {
+                user.setMarketingConsent(newConsent);
+                user.setMarketingConsentUpdatedAt(LocalDateTime.now());
+                log.info("Customer {} marketing consent updated to {}", user.getId(), newConsent);
+            }
+        }
+
+        return mapToDTO(userRepository.save(user));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserDTO> searchCustomers(String query) {
+        if (query == null || query.isBlank()) {
+            return getAllCustomers();
+        }
+        return userRepository.searchCustomers(query.trim()).stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CustomerInteractionDTO> getCustomerInteractions(Long customerId) {
+        if (!userRepository.existsById(customerId)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Không tìm thấy khách hàng: " + customerId);
+        }
+        return interactionRepository.findByCustomerIdOrderByCreatedAtDesc(customerId).stream()
+                .map(i -> CustomerInteractionDTO.builder()
+                        .id(i.getId())
+                        .customerId(i.getCustomerId())
+                        .staffId(i.getStaffId())
+                        .staffName(i.getStaffName())
+                        .channel(i.getChannel())
+                        .content(i.getContent())
+                        .createdAt(i.getCreatedAt())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public CustomerInteractionDTO addCustomerInteraction(Long customerId, Long staffId, String staffName, CreateInteractionRequest request) {
+        if (!userRepository.existsById(customerId)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Không tìm thấy khách hàng: " + customerId);
+        }
+        if (request == null || request.getContent() == null || request.getContent().isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Nội dung ghi chú chăm sóc không được để trống");
+        }
+
+        String channel = (request.getChannel() != null && !request.getChannel().isBlank())
+                ? request.getChannel().trim().toUpperCase()
+                : "DIRECT";
+
+        CustomerInteraction saved = interactionRepository.save(CustomerInteraction.builder()
+                .customerId(customerId)
+                .staffId(staffId)
+                .staffName(staffName != null && !staffName.isBlank() ? staffName : "Nhân viên chăm sóc")
+                .channel(channel)
+                .content(request.getContent().trim())
+                .build());
+
+        log.info("Added interaction {} for customer {} via channel {}", saved.getId(), customerId, channel);
+
+        return CustomerInteractionDTO.builder()
+                .id(saved.getId())
+                .customerId(saved.getCustomerId())
+                .staffId(saved.getStaffId())
+                .staffName(saved.getStaffName())
+                .channel(saved.getChannel())
+                .content(saved.getContent())
+                .createdAt(saved.getCreatedAt())
+                .build();
+    }
+
+    @Override
+    @Transactional
     public UserDTO registerCustomer(CustomerRegisterRequest request) {
         if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
             throw new IllegalArgumentException("Email không được để trống!");
         }
         if (request.getPassword() == null || request.getPassword().length() < 6) {
-            throw new IllegalArgumentException("Mật khẩu phải có độ dài tối thiểu 6 ký tự!");
+            throw new IllegalArgumentException("Mật khẩu phải từ 6 ký tự trở lên!");
         }
 
-        String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
-        if (userRepository.findByEmail(normalizedEmail).isPresent()) {
-            throw new EmailAlreadyExistsException("Email '" + normalizedEmail + "' đã được đăng ký trong hệ thống!");
+        String email = request.getEmail().trim().toLowerCase();
+        if (userRepository.findByEmail(email).isPresent()) {
+            throw new EmailAlreadyExistsException("Email '" + email + "' đã tồn tại trên hệ thống!");
         }
 
-        String baseUsername = normalizedEmail.split("@")[0].replaceAll("[^a-z0-9]", "");
-        if (baseUsername.isEmpty()) {
-            baseUsername = "customer";
-        }
-        // Keep within the persisted 50-character username and avoid small random suffix collisions.
-        baseUsername = baseUsername.substring(0, Math.min(36, baseUsername.length()));
-        String finalUsername = baseUsername;
-        while (userRepository.findByUsername(finalUsername).isPresent()) {
-            finalUsername = baseUsername + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String baseUsername = email.split("@")[0].toLowerCase().replaceAll("[^a-z0-9]", "");
+        String username = baseUsername;
+        if (userRepository.findByUsername(username).isPresent()) {
+            username += "_" + (new Random().nextInt(900) + 100);
         }
 
         Role customerRole = roleRepository.findByName("ROLE_CUSTOMER")
-                .orElseGet(() -> roleRepository.save(Role.builder().name("ROLE_CUSTOMER").description("Khách hàng mua sắm").build()));
+                .orElseGet(() -> roleRepository.save(Role.builder().name("ROLE_CUSTOMER").description("Khách hàng").build()));
 
         User user = User.builder()
-                .username(finalUsername)
-                .email(normalizedEmail)
+                .username(username)
+                .email(email)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .fullName(request.getFullName() != null ? request.getFullName().trim() : "Khách Hàng")
                 .phoneNumber(request.getPhoneNumber() != null ? request.getPhoneNumber().trim() : null)
-                .status("ACTIVE") // Tài khoản có trạng thái ACTIVE ngay sau khi đăng ký thành công, không OTP
-                .failedAttempts(0)
+                .status("ACTIVE")
                 .roles(new HashSet<>(Collections.singletonList(customerRole)))
                 .build();
 
-        User savedUser = userRepository.save(user);
-        log.info("Đăng ký thành công tài khoản khách hàng ID: {}", savedUser.getId());
-        return mapToDTO(savedUser);
+        return mapToDTO(userRepository.save(user));
     }
 
     @Override
@@ -181,35 +299,33 @@ public class UserServiceImpl implements UserService {
     public UserDTO toggleUserStatus(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với ID: " + id));
+
         if ("ACTIVE".equalsIgnoreCase(user.getStatus())) {
-            user.setStatus("LOCKED");
+            user.setStatus("INACTIVE");
         } else {
             user.setStatus("ACTIVE");
             user.setFailedAttempts(0);
             user.setLockoutExpiration(null);
         }
+
         return mapToDTO(userRepository.save(user));
     }
 
     @Override
     @Transactional
     public void deleteUser(Long id) {
+        if (!userRepository.existsById(id)) {
+            throw new RuntimeException("Không tìm thấy người dùng với ID: " + id);
+        }
         userRepository.deleteById(id);
     }
 
     @Override
+    @Transactional
     public LoginResponse login(LoginRequest request) {
-        // Lấy identifier từ request (hỗ trợ cả email và username/employeeCode)
-        String identifier = request.getEffectiveIdentifier();
-        if (identifier == null || identifier.isEmpty()) {
-            throw new BadCredentialsException("Vui lòng cung cấp email hoặc tài khoản đăng nhập!");
-        }
-
-        // Tìm user: ưu tiên email (customer web), sau đó username và employeeCode (nhân viên nội bộ)
+        String identifier = request.getUsername() != null ? request.getUsername().trim() : "";
         User user = userRepository.findByEmail(identifier.toLowerCase())
                 .or(() -> userRepository.findByUsername(identifier))
-                .or(() -> userRepository.findByEmployeeCode(identifier))
-                .or(() -> userRepository.findByEmployeeCode(identifier.toUpperCase()))
                 .orElseThrow(() -> new BadCredentialsException("Email hoặc mật khẩu không chính xác!"));
 
         // 1. Kiểm tra khóa tài khoản (Brute Force Protection)
@@ -337,6 +453,10 @@ public class UserServiceImpl implements UserService {
                 .phoneVerified(user.isPhoneVerified())
                 .employeeCode(user.getEmployeeCode())
                 .branchName(user.getBranchName())
+                .address(user.getAddress() != null ? user.getAddress() : user.getBranchName())
+                .gender(user.getGender())
+                .marketingConsent(user.isMarketingConsent())
+                .marketingConsentUpdatedAt(user.getMarketingConsentUpdatedAt())
                 .status(user.getStatus())
                 .roles(user.getRoles().stream().map(Role::getName).collect(Collectors.toSet()))
                 .createdAt(user.getCreatedAt())

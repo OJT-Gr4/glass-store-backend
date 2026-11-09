@@ -215,3 +215,5 @@ The first catalog request can take longer during startup. HTTP readiness checks 
 Compile/package with Java 21 and run the tests relevant to changes. Spring integration tests must use their H2 test configuration or explicit test datasource overrides; never point create-drop tests at the development MySQL server.
 
 Share code, .env.example, canonical init scripts and reviewed migrations through the repositories. Personal .env, logs, credential backups and runtime data remain local. If the team needs one live shared dataset, provision an agreed database server and access policy separately; do not open a developer's MySQL to the internet as part of this local setup.
+
+For S3-13 stock vouchers, supplier administration, and per-location defect quarantine, see [the engineering notes](docs/engineering/s3-13-stock-vouchers.md) and review the additive migration before deploying.

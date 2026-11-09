@@ -30,4 +30,15 @@ public class InventoryBalance {
     @Column(nullable = false)
     @Builder.Default
     private Integer quantity = 0;
+
+    @Column(name = "quarantined_quantity", nullable = false)
+    @Builder.Default
+    private Integer quarantinedQuantity = 0;
+
+    @Transient
+    public int getSellableQuantity() {
+        int onHand = quantity == null ? 0 : quantity;
+        int quarantined = quarantinedQuantity == null ? 0 : quarantinedQuantity;
+        return Math.max(0, onHand - quarantined);
+    }
 }

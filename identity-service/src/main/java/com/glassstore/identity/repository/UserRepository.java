@@ -25,4 +25,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("SELECT DISTINCT u FROM User u JOIN u.roles r WHERE r.name = 'ROLE_CUSTOMER'")
     List<User> findAllCustomers();
+
+    @Query("SELECT DISTINCT u FROM User u JOIN u.roles r WHERE r.name = 'ROLE_CUSTOMER' AND (" +
+           "LOWER(u.fullName) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+           "u.phoneNumber LIKE CONCAT('%', :query, '%') OR " +
+           "LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+           "LOWER(u.employeeCode) LIKE LOWER(CONCAT('%', :query, '%')))")
+    List<User> searchCustomers(@Param("query") String query);
 }

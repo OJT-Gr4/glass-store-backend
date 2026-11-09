@@ -52,6 +52,18 @@ public class User {
     @Column(name = "token_version", nullable = false, columnDefinition = "int default 0")
     private int tokenVersion = 0;
 
+    @Column(name = "marketing_consent", nullable = false, columnDefinition = "boolean default false")
+    private boolean marketingConsent = false;
+
+    @Column(name = "marketing_consent_updated_at")
+    private LocalDateTime marketingConsentUpdatedAt;
+
+    @Column(name = "gender", length = 20)
+    private String gender;
+
+    @Column(name = "address", length = 500)
+    private String address;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "user_roles",
@@ -103,7 +115,12 @@ public class User {
         private LocalDateTime lockoutExpiration;
         private boolean phoneVerified = false;
         private int tokenVersion = 0;
+        private boolean marketingConsent = false;
+        private LocalDateTime marketingConsentUpdatedAt;
+        private String gender;
+        private String address;
         private Set<Role> roles = new HashSet<>();
+        
 
         public UserBuilder id(Long id) { this.id = id; return this; }
         public UserBuilder username(String username) { this.username = username; return this; }
@@ -118,11 +135,20 @@ public class User {
         public UserBuilder lockoutExpiration(LocalDateTime lockoutExpiration) { this.lockoutExpiration = lockoutExpiration; return this; }
         public UserBuilder phoneVerified(boolean phoneVerified) { this.phoneVerified = phoneVerified; return this; }
         public UserBuilder tokenVersion(int tokenVersion) { this.tokenVersion = tokenVersion; return this; }
+        public UserBuilder marketingConsent(boolean marketingConsent) { this.marketingConsent = marketingConsent; return this; }
+        public UserBuilder marketingConsentUpdatedAt(LocalDateTime marketingConsentUpdatedAt) { this.marketingConsentUpdatedAt = marketingConsentUpdatedAt; return this; }
+        public UserBuilder gender(String gender) { this.gender = gender; return this; }
+        public UserBuilder address(String address) { this.address = address; return this; }
         public UserBuilder roles(Set<Role> roles) { this.roles = roles; return this; }
+
         public User build() {
             User u = new User(id, username, email, passwordHash, fullName, phoneNumber, employeeCode, branchName, status, failedAttempts, lockoutExpiration, roles);
             u.setPhoneVerified(phoneVerified);
             u.setTokenVersion(tokenVersion);
+            u.setMarketingConsent(marketingConsent);
+            u.setMarketingConsentUpdatedAt(marketingConsentUpdatedAt);
+            u.setGender(gender);
+            u.setAddress(address);
             return u;
         }
     }
@@ -153,6 +179,14 @@ public class User {
     public void setPhoneVerified(boolean phoneVerified) { this.phoneVerified = phoneVerified; }
     public int getTokenVersion() { return tokenVersion; }
     public void setTokenVersion(int tokenVersion) { this.tokenVersion = tokenVersion; }
+    public boolean isMarketingConsent() { return marketingConsent; }
+    public void setMarketingConsent(boolean marketingConsent) { this.marketingConsent = marketingConsent; }
+    public LocalDateTime getMarketingConsentUpdatedAt() { return marketingConsentUpdatedAt; }
+    public void setMarketingConsentUpdatedAt(LocalDateTime marketingConsentUpdatedAt) { this.marketingConsentUpdatedAt = marketingConsentUpdatedAt; }
+    public String getGender() { return gender; }
+    public void setGender(String gender) { this.gender = gender; }
+    public String getAddress() { return address; }
+    public void setAddress(String address) { this.address = address; }
     public Set<Role> getRoles() { return roles; }
     public void setRoles(Set<Role> roles) { this.roles = roles; }
     public LocalDateTime getCreatedAt() { return createdAt; }
