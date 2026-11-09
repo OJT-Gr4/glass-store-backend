@@ -269,7 +269,7 @@ public class UserServiceImpl implements UserService {
 
         String email = request.getEmail().trim().toLowerCase();
         if (userRepository.findByEmail(email).isPresent()) {
-            throw new EmailAlreadyExistsException("Email '" + email + "' đã tồn tại trên hệ thống!");
+            throw new EmailAlreadyExistsException("Email '" + email + "' đã được đăng ký trong hệ thống!");
         }
 
         String baseUsername = email.split("@")[0].toLowerCase().replaceAll("[^a-z0-9]", "");
@@ -321,11 +321,18 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional
     public LoginResponse login(LoginRequest request) {
-        String identifier = request.getUsername() != null ? request.getUsername().trim() : "";
-        User user = userRepository.findByEmail(identifier.toLowerCase())
-                .or(() -> userRepository.findByUsername(identifier))
+        String identifier = request != null ? request.getEffectiveIdentifier() : "";
+        if (identifier == null || identifier.trim().isEmpty()) {
+            throw new BadCredentialsException("Email hoặc mật khẩu không chính xác!");
+        }
+
+        identifier = identifier.trim();
+        final String searchKey = identifier;
+        User user = userRepository.findByEmail(searchKey.toLowerCase())
+                .or(() -> userRepository.findByUsername(searchKey))
+                .or(() -> userRepository.findByEmployeeCode(searchKey))
+                .or(() -> userRepository.findByEmployeeCode(searchKey.toUpperCase()))
                 .orElseThrow(() -> new BadCredentialsException("Email hoặc mật khẩu không chính xác!"));
 
         // 1. Kiểm tra khóa tài khoản (Brute Force Protection)

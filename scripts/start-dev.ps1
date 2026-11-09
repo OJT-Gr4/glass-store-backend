@@ -7,10 +7,19 @@ $portalRoot = Get-Setting 'INTERNAL_PORTAL_DIR' (Join-Path $workspaceRoot 'front
 $ports=Get-ApplicationPorts
 if (@($ports.Values | Sort-Object -Unique).Count -ne 7) { throw 'Application ports must be distinct.' }
 foreach ($root in @($customerRoot,$portalRoot)) { if (-not (Test-Path -LiteralPath (Join-Path $root 'package.json'))) { throw "Frontend missing: $root. Use the documented folder layout or set its directory in backend/.env." } }
+
 $java = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin/java.exe' } else { 'java.exe' }
-$javaCommand=Get-Command $java -ErrorAction SilentlyContinue
-if (-not $javaCommand) {
+$javaCommand = Get-Command $java -ErrorAction SilentlyContinue
+$isJava21 = $false
+if ($javaCommand) {
+    $previousErrorPolicy = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $testVer = (& $javaCommand.Source -version 2>&1 | Out-String) } finally { $ErrorActionPreference = $previousErrorPolicy }
+    if ($testVer -match 'version "21[\."]') { $isJava21 = $true }
+}
+if (-not $isJava21) {
     $candidates = @(
+        'C:\Program Files\Java\jdk-21*\bin\java.exe',
         'C:\Program Files\Java\jdk-21\bin\java.exe',
         'C:\Program Files\Eclipse Adoptium\jdk-21*\bin\java.exe',
         'C:\Program Files\Microsoft\jdk-21*\bin\java.exe'
@@ -70,7 +79,7 @@ try {
     foreach ($service in @('identity-service','catalog-service','order-pos-service','eyewear-lab-service','api-gateway')) {
         $jar=Join-Path $script:BackendRoot "$service/target/$service-1.0.0.jar"
         if (-not (Test-Path -LiteralPath $jar)) { throw "Missing $jar" }
-        $proc=Start-Process -FilePath $javaCommand.Source -ArgumentList @('-Xms64m','-Xmx256m','-jar',('"'+$jar+'"')) -WorkingDirectory $script:BackendRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:RuntimeRoot "$service.log") -RedirectStandardError (Join-Path $script:RuntimeRoot "$service.err.log") -PassThru
+        $proc=Start-Process -FilePath $javaCommand.Source -ArgumentList @('-Xms64m','-Xmx256m','-jar',$jar) -WorkingDirectory $script:BackendRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:RuntimeRoot "$service.log") -RedirectStandardError (Join-Path $script:RuntimeRoot "$service.err.log") -PassThru
         $records += [pscustomobject]@{Name=$service;Id=$proc.Id;StartedAt=$proc.StartTime.ToUniversalTime().ToString('o')}
     }
     foreach($site in @(@{Name='customer-web';Root=$customerRoot},@{Name='internal-portal';Root=$portalRoot})) {
@@ -85,7 +94,7 @@ try {
         try {
             $env:VITE_PORT=[string]$ports[$site.Name]
             $env:VITE_PROXY_TARGET="http://127.0.0.1:$($ports['api-gateway'])"
-            $proc=Start-Process -FilePath 'cmd.exe' -ArgumentList '/d','/c','npm run dev' -WorkingDirectory $site.Root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:RuntimeRoot "$($site.Name).log") -RedirectStandardError (Join-Path $script:RuntimeRoot "$($site.Name).err.log") -PassThru
+            $proc=Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','npm run dev' -WorkingDirectory $site.Root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:RuntimeRoot "$($site.Name).log") -RedirectStandardError (Join-Path $script:RuntimeRoot "$($site.Name).err.log") -PassThru
         } finally {$env:VITE_PORT=$previousVitePort;$env:VITE_PROXY_TARGET=$previousProxy}
         $records += [pscustomobject]@{Name=$site.Name;Id=$proc.Id;StartedAt=$proc.StartTime.ToUniversalTime().ToString('o')}
     }

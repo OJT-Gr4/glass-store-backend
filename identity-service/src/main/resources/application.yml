@@ -28,3 +28,10 @@ glassstore:
   demo:
     seed:
       enabled: ${DEMO_SEED_ENABLED:false}
+
+sms:
+  provider:
+    url: ${SMS_PROVIDER_URL:sandbox}
+    api-key: ${SMS_PROVIDER_API_KEY:}
+    sender: ${SMS_PROVIDER_SENDER:OptiVision}
+

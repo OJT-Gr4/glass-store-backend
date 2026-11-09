@@ -3,6 +3,7 @@ package com.glassstore.identity.service.impl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.glassstore.identity.service.SmsGateway;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -18,6 +19,7 @@ import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class ConfigurableSmsGateway implements SmsGateway {
 
     private final ObjectMapper objectMapper;
@@ -38,6 +40,13 @@ public class ConfigurableSmsGateway implements SmsGateway {
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "SMS_PROVIDER_NOT_CONFIGURED: Nhà cung cấp SMS OTP chưa được cấu hình trên môi trường này"
             );
+        }
+
+        String normalizedUrl = providerUrl.trim();
+        if ("sandbox".equalsIgnoreCase(normalizedUrl) || "mock".equalsIgnoreCase(normalizedUrl)) {
+            log.info("🔔 [SMS OTP SANDBOX] Mã OTP xác thực gửi tới SĐT [{}]: [{}] (Mục đích: {}, hết hạn: {})",
+                    phoneNumber, otpCode, purpose, expiresAt);
+            return;
         }
 
         try {
