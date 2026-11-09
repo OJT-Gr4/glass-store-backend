@@ -1,14 +1,26 @@
-param([ValidateRange(1,120)][int]$TimeoutSeconds = 30)
+param([ValidateRange(1,120)][int]$TimeoutSeconds = 5)
 . "$PSScriptRoot/common.ps1"
 Import-GlassStoreEnvironment
 $ports=Get-ApplicationPorts
 $failed=$false
+$listeningMap=@{}
 foreach($entry in $ports.GetEnumerator()) {
     $alive=Test-TcpEndpoint '127.0.0.1' $entry.Value
+    $listeningMap[$entry.Key]=$alive
     Write-Host "$($entry.Key): port=$($entry.Value) listening=$alive"
     if(-not $alive){$failed=$true}
 }
-foreach($probe in @(@{Url="http://127.0.0.1:$($ports['customer-web'])";Expected=200},@{Url="http://127.0.0.1:$($ports['internal-portal'])";Expected=200},@{Url="http://127.0.0.1:$($ports['api-gateway'])/api/products";Expected=200},@{Url="http://127.0.0.1:$($ports['api-gateway'])/api/orders";Expected=401})) {
+$probes = @(
+    @{Key='customer-web';Url="http://127.0.0.1:$($ports['customer-web'])";Expected=200},
+    @{Key='internal-portal';Url="http://127.0.0.1:$($ports['internal-portal'])";Expected=200},
+    @{Key='api-gateway';Url="http://127.0.0.1:$($ports['api-gateway'])/api/products";Expected=200},
+    @{Key='api-gateway';Url="http://127.0.0.1:$($ports['api-gateway'])/api/orders";Expected=401}
+)
+foreach($probe in $probes) {
+    if (-not $listeningMap[$probe.Key]) {
+        Write-Host "$($probe.Url): Skipped (Port not listening)"
+        continue
+    }
     $code=0
     try {$response=Invoke-WebRequest $probe.Url -UseBasicParsing -TimeoutSec $TimeoutSeconds; $code=[int]$response.StatusCode}
     catch {if($_.Exception.Response){$code=[int]$_.Exception.Response.StatusCode}}

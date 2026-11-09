@@ -9,6 +9,17 @@ if (@($ports.Values | Sort-Object -Unique).Count -ne 7) { throw 'Application por
 foreach ($root in @($customerRoot,$portalRoot)) { if (-not (Test-Path -LiteralPath (Join-Path $root 'package.json'))) { throw "Frontend missing: $root. Use the documented folder layout or set its directory in backend/.env." } }
 $java = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin/java.exe' } else { 'java.exe' }
 $javaCommand=Get-Command $java -ErrorAction SilentlyContinue
+if (-not $javaCommand) {
+    $candidates = @(
+        'C:\Program Files\Java\jdk-21\bin\java.exe',
+        'C:\Program Files\Eclipse Adoptium\jdk-21*\bin\java.exe',
+        'C:\Program Files\Microsoft\jdk-21*\bin\java.exe'
+    )
+    foreach ($c in $candidates) {
+        $found = Get-Item $c -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($found) { $javaCommand = Get-Command $found.FullName -ErrorAction SilentlyContinue; break }
+    }
+}
 if (-not $javaCommand) { throw 'Java not found. Set JAVA_HOME to a JDK 21 installation.' }
 $previousErrorPolicy=$ErrorActionPreference
 $ErrorActionPreference='Continue'
@@ -27,7 +38,23 @@ if ($occupied.Count) { throw "Ports already occupied: $(($occupied | ForEach-Obj
 & "$PSScriptRoot/setup-db.ps1" -Mode (Get-Setting 'DB_MODE' 'native') -CheckOnly
 if (-not $SkipBuild) {
     $maven=Get-Setting 'MVN_CMD' 'mvn.cmd'
-    if (-not (Get-Command $maven -ErrorAction SilentlyContinue)) { throw 'Maven 3.9+ not found. Add mvn.cmd to PATH or set MVN_CMD in backend/.env.' }
+    if (-not (Get-Command $maven -ErrorAction SilentlyContinue)) {
+        $candidateMaven = @(
+            'C:\Program Files\Maven\bin\mvn.cmd',
+            'C:\Program Files\apache-maven\bin\mvn.cmd',
+            'C:\apache-maven\bin\mvn.cmd'
+        )
+        if ($env:MAVEN_HOME) { $candidateMaven += (Join-Path $env:MAVEN_HOME 'bin\mvn.cmd') }
+        if ($env:M2_HOME) { $candidateMaven += (Join-Path $env:M2_HOME 'bin\mvn.cmd') }
+        $foundMaven = Get-ChildItem -Path 'C:\Program Files\Maven*', 'C:\Program Files\apache-maven*' -Filter 'mvn.cmd' -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($foundMaven) { $candidateMaven += $foundMaven.FullName }
+        foreach ($c in $candidateMaven) {
+            if (Test-Path -LiteralPath $c) { $maven = $c; break }
+        }
+    }
+    if (-not (Get-Command $maven -ErrorAction SilentlyContinue) -and -not (Test-Path -LiteralPath $maven)) {
+        throw 'Maven 3.9+ not found. Add mvn.cmd to PATH or set MVN_CMD in backend/.env.'
+    }
     Push-Location $script:BackendRoot
     try { & $maven '-DskipTests' package; if($LASTEXITCODE -ne 0){throw 'Backend package failed; no services were started.'} } finally { Pop-Location }
 }
