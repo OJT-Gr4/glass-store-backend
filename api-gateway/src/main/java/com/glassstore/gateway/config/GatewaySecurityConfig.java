@@ -37,6 +37,7 @@ public class GatewaySecurityConfig {
                 .pathMatchers("/api/auth/me","/api/v1/auth/me").authenticated()
                 .pathMatchers("/api/auth/**","/api/v1/auth/**","/api/payments/callback").permitAll()
                 .pathMatchers(HttpMethod.POST,"/api/payments/sepay/ipn").permitAll()
+                .pathMatchers(HttpMethod.GET,"/api/payments/sepay/configuration","/api/payments/sepay/config").permitAll()
                 .pathMatchers(HttpMethod.GET, "/api/locations").permitAll()
                 .pathMatchers(HttpMethod.GET,"/api/products","/api/products/**","/api/categories/**").permitAll()
                 .pathMatchers("/api/catalog/admin/**").hasRole("ADMIN")

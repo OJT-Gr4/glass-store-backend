@@ -18,7 +18,7 @@ public class OrderSecurityConfig {
                 .requestMatchers(HttpMethod.OPTIONS,"/**").permitAll()
                 .requestMatchers("/error").permitAll()
                 .requestMatchers(HttpMethod.POST,"/api/payments/callback","/api/payments/sepay/ipn").permitAll()
-                .requestMatchers(HttpMethod.GET,"/api/payments/sepay/configuration").permitAll()
+                .requestMatchers(HttpMethod.GET,"/api/payments/sepay/configuration","/api/payments/sepay/config").permitAll()
                 .requestMatchers("/internal/warranty-items/**").hasRole("SERVICE")
                 .requestMatchers("/internal/location-references/**").hasRole("SERVICE")
                 .requestMatchers(HttpMethod.GET,"/api/orders/*/history","/api/orders/*/warranty-activations").hasAnyRole("ADMIN","SALES_STAFF")
