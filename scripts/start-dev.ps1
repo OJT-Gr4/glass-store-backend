@@ -7,6 +7,7 @@ $portalRoot = Get-Setting 'INTERNAL_PORTAL_DIR' (Join-Path $workspaceRoot 'front
 $ports=Get-ApplicationPorts
 if (@($ports.Values | Sort-Object -Unique).Count -ne 7) { throw 'Application ports must be distinct.' }
 foreach ($root in @($customerRoot,$portalRoot)) { if (-not (Test-Path -LiteralPath (Join-Path $root 'package.json'))) { throw "Frontend missing: $root. Use the documented folder layout or set its directory in backend/.env." } }
+
 $java = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin/java.exe' } else { 'java.exe' }
 $javaCommand = Get-Command $java -ErrorAction SilentlyContinue
 $isJava21 = $false
@@ -18,8 +19,6 @@ if ($javaCommand) {
 }
 if (-not $isJava21) {
     $candidates = @(
-        'C:\Users\Admin\.jdks\temurin-21.0.10\bin\java.exe',
-        'C:\Users\Admin\.jdks\dragonwell-ex-21.0.10\bin\java.exe',
         'C:\Program Files\Java\jdk-21*\bin\java.exe',
         'C:\Program Files\Java\jdk-21\bin\java.exe',
         'C:\Program Files\Eclipse Adoptium\jdk-21*\bin\java.exe',
@@ -31,6 +30,8 @@ if (-not $isJava21) {
     }
 }
 if (-not $javaCommand) { throw 'Java not found. Set JAVA_HOME to a JDK 21 installation.' }
+$previousErrorPolicy=$ErrorActionPreference
+$ErrorActionPreference='Continue'
 try {$javaVersion=(& $javaCommand.Source -version 2>&1 | Out-String)} finally {$ErrorActionPreference=$previousErrorPolicy}
 if ($javaVersion -notmatch 'version "21[\."]') { throw 'GlassStore requires JDK 21. Fix JAVA_HOME/PATH; the launcher will not silently use JDK 25.' }
 if (-not (Get-Command node.exe -ErrorAction SilentlyContinue) -or -not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) { throw 'Node.js and npm are required.' }
