@@ -75,6 +75,58 @@ public class PaymentController {
                 outcome.payment()));
     }
 
+    @PostMapping(value = {"/sepay/simulate-ipn", "/sepay/simulate-callback"})
+    public ResponseEntity<ApiResponse<Payment>> simulateSepayIpn(
+            @RequestParam(name = "orderCode") String orderCode,
+            @RequestParam(name = "amount", required = false) BigDecimal amount) {
+        return simulateCallback(orderCode, amount, "SUCCESS");
+    }
+
+    @GetMapping(value = "/sandbox/quick-pay", produces = org.springframework.http.MediaType.TEXT_HTML_VALUE)
+    @org.springframework.web.bind.annotation.ResponseBody
+    public String quickPayHtml(@RequestParam(name = "orderCode") String orderCode) {
+        try {
+            simulateCallback(orderCode, null, "SUCCESS");
+            return """
+                <!DOCTYPE html>
+                <html lang="vi">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>SePay Sandbox - Thanh toán thành công</title>
+                    <style>
+                        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background-color: #f0fdf4; color: #166534; padding: 20px; box-sizing: border-box; }
+                        .card { background: white; border-radius: 16px; padding: 32px 24px; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); max-width: 400px; width: 100%; border: 1px solid #bbf7d0; }
+                        .icon { width: 64px; height: 64px; background: #dcfce7; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 32px; font-weight: bold; }
+                        h1 { font-size: 20px; margin: 0 0 8px; color: #15803d; }
+                        p { font-size: 14px; color: #4b5563; margin: 0 0 20px; line-height: 1.5; }
+                        .badge { display: inline-block; background: #f0fdf4; color: #166534; padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 13px; border: 1px solid #86efac; }
+                    </style>
+                </head>
+                <body>
+                    <div class="card">
+                        <div class="icon">✓</div>
+                        <h1>Thanh Toán Thành Công!</h1>
+                        <p>Đơn hàng <strong>%s</strong> đã được xác nhận thanh toán giả lập qua SePay Sandbox.</p>
+                        <div class="badge">Màn hình POS đã tự động ghi nhận</div>
+                    </div>
+                </body>
+                </html>
+                """.formatted(orderCode);
+        } catch (Exception e) {
+            return """
+                <!DOCTYPE html>
+                <html lang="vi">
+                <head><meta charset="UTF-8"><title>Lỗi</title></head>
+                <body style="font-family: sans-serif; text-align: center; padding: 40px;">
+                    <h2 style="color: #dc2626;">Không thể xác nhận đơn hàng</h2>
+                    <p>%s</p>
+                </body>
+                </html>
+                """.formatted(e.getMessage());
+        }
+    }
+
     @PostMapping("/order/{orderId}/refund-request")
     public ResponseEntity<ApiResponse<Order>> refundRequest(
             @PathVariable("orderId") Long orderId,
