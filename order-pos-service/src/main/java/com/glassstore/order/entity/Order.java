@@ -120,6 +120,7 @@ public class Order {
     private String refundStatus;
     private BigDecimal cashReceived;
     @Transient private boolean manualPaymentConfirmed;
+    @Transient private boolean gatewayRequested;
     @Transient private String paymentReference;
     @Transient @com.fasterxml.jackson.annotation.JsonIgnore private String checkoutRequestHash;
     private String refundConfirmedBy;

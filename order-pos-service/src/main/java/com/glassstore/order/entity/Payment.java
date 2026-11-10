@@ -69,6 +69,9 @@ public class Payment {
     @Column(name = "external_transaction_id", length = 120)
     private String externalTransactionId;
 
+    @Column(length = 120)
+    private String providerOrderId;
+
     /** Human-facing reference printed on the invoice. */
     @Column(name = "transaction_code", length = 120)
     private String transactionCode;

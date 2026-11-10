@@ -71,8 +71,8 @@ public class RepairServiceWorkflow {
         }
 
         WarrantyOrderItemDTO purchase = resolvePurchase(request);
-        Long requestedCustomerId = request.customerId() != null ? request.customerId() : purchase.customerId();
-        if (!Objects.equals(requestedCustomerId, purchase.customerId())) {
+        Long requestedCustomerId = request.customerId() != null ? request.customerId() : (purchase != null ? purchase.customerId() : null);
+        if (purchase != null && !Objects.equals(requestedCustomerId, purchase.customerId())) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR,
                     "Khách hàng không thuộc đơn hàng được chọn");
         }
@@ -94,9 +94,9 @@ public class RepairServiceWorkflow {
                 .serviceType(request.requestedServices().get(0))
                 .assignedTechnician(trimToNull(request.assignedTechnician()))
                 .receptionEmployee(trimToNull(request.receptionEmployee()))
-                .orderId(purchase.orderId())
-                .orderItemId(purchase.orderItemId())
-                .customerId(purchase.customerId())
+                .orderId(purchase != null ? purchase.orderId() : request.orderId())
+                .orderItemId(purchase != null ? purchase.orderItemId() : request.orderItemId())
+                .customerId(requestedCustomerId)
                 .receivedAt(receivedAt)
                 .expectedPickupAt(request.expectedPickupAt())
                 .status("RECEIVED")
@@ -159,9 +159,12 @@ public class RepairServiceWorkflow {
     }
 
     private WarrantyOrderItemDTO resolvePurchase(RepairServiceCreateRequest request) {
+        if (request.orderId() == null && request.orderItemId() == null) {
+            return null;
+        }
         if (request.orderId() == null || request.orderItemId() == null) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR,
-                    "Cần cung cấp orderId và orderItemId để tiếp nhận sửa chữa");
+                    "Cần cung cấp cả orderId và orderItemId để liên kết đơn hàng");
         }
         try {
             WarrantyOrderItemDTO item = orderClient.getPurchaseItem(request.orderId(), request.orderItemId());

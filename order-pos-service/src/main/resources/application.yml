@@ -1,6 +1,14 @@
 server:
   port: ${ORDER_PORT:8083}
 
+payment:
+  provider: ${PAYMENT_PROVIDER:unconfigured}
+  sepay:
+    merchant-id: ${SEPAY_MERCHANT_ID:}
+    secret-key: ${SEPAY_SECRET_KEY:}
+    ipn-secret: ${SEPAY_IPN_SECRET:}
+    return-base-url: ${SEPAY_RETURN_BASE_URL:}
+
 services:
   catalog-service:
     url: ${CATALOG_SERVICE_URL:http://127.0.0.1:${CATALOG_PORT:8082}}

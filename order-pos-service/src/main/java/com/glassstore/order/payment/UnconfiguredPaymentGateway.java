@@ -5,6 +5,7 @@ import com.glassstore.common.exception.ErrorCode;
 import com.glassstore.order.domain.PaymentMethod;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 /**
  * Temporary implementation used while no gateway credentials exist (OQ-05).
@@ -14,6 +15,8 @@ import org.springframework.stereotype.Component;
  * a paid order. Replace this bean with a real adapter once a provider is selected.</p>
  */
 @Component
+@ConditionalOnProperty(
+        name = "payment.provider", havingValue = "unconfigured", matchIfMissing = true)
 @Slf4j
 public class UnconfiguredPaymentGateway implements PaymentGateway {
 

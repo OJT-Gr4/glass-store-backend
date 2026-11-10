@@ -7,11 +7,22 @@ $portalRoot = Get-Setting 'INTERNAL_PORTAL_DIR' (Join-Path $workspaceRoot 'front
 $ports=Get-ApplicationPorts
 if (@($ports.Values | Sort-Object -Unique).Count -ne 7) { throw 'Application ports must be distinct.' }
 foreach ($root in @($customerRoot,$portalRoot)) { if (-not (Test-Path -LiteralPath (Join-Path $root 'package.json'))) { throw "Frontend missing: $root. Use the documented folder layout or set its directory in backend/.env." } }
-$java = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin/java.exe' } else { 'java.exe' }
-$javaCommand=Get-Command $java -ErrorAction SilentlyContinue
-if (-not $javaCommand) { throw 'Java not found. Set JAVA_HOME to a JDK 21 installation.' }
 $previousErrorPolicy=$ErrorActionPreference
 $ErrorActionPreference='Continue'
+$java = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin/java.exe' } else { 'java.exe' }
+$javaCommand=Get-Command $java -ErrorAction SilentlyContinue
+$testVer = if ($javaCommand) { (& $javaCommand.Source -version 2>&1 | Out-String) } else { '' }
+if (-not $javaCommand -or $testVer -notmatch 'version "21[\."]') {
+    foreach ($candidate in @("C:\Users\Admin\.jdks\temurin-21.0.10", "C:\Users\Admin\.jdks\dragonwell-ex-21.0.10")) {
+        if (Test-Path -LiteralPath "$candidate\bin\java.exe") {
+            $env:JAVA_HOME = $candidate
+            $java = Join-Path $env:JAVA_HOME 'bin/java.exe'
+            $javaCommand = Get-Command $java -ErrorAction SilentlyContinue
+            break
+        }
+    }
+}
+if (-not $javaCommand) { throw 'Java not found. Set JAVA_HOME to a JDK 21 installation.' }
 try {$javaVersion=(& $javaCommand.Source -version 2>&1 | Out-String)} finally {$ErrorActionPreference=$previousErrorPolicy}
 if ($javaVersion -notmatch 'version "21[\."]') { throw 'GlassStore requires JDK 21. Fix JAVA_HOME/PATH; the launcher will not silently use JDK 25.' }
 if (-not (Get-Command node.exe -ErrorAction SilentlyContinue) -or -not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) { throw 'Node.js and npm are required.' }
@@ -43,7 +54,7 @@ try {
     foreach ($service in @('identity-service','catalog-service','order-pos-service','eyewear-lab-service','api-gateway')) {
         $jar=Join-Path $script:BackendRoot "$service/target/$service-1.0.0.jar"
         if (-not (Test-Path -LiteralPath $jar)) { throw "Missing $jar" }
-        $proc=Start-Process -FilePath $javaCommand.Source -ArgumentList @('-Xms64m','-Xmx256m','-jar',('"'+$jar+'"')) -WorkingDirectory $script:BackendRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:RuntimeRoot "$service.log") -RedirectStandardError (Join-Path $script:RuntimeRoot "$service.err.log") -PassThru
+        $proc=Start-Process -FilePath $javaCommand.Source -ArgumentList @('-Xms64m','-Xmx256m','-jar',$jar) -WorkingDirectory $script:BackendRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:RuntimeRoot "$service.log") -RedirectStandardError (Join-Path $script:RuntimeRoot "$service.err.log") -PassThru
         $records += [pscustomobject]@{Name=$service;Id=$proc.Id;StartedAt=$proc.StartTime.ToUniversalTime().ToString('o')}
     }
     foreach($site in @(@{Name='customer-web';Root=$customerRoot},@{Name='internal-portal';Root=$portalRoot})) {

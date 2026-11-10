@@ -211,55 +211,55 @@ ON DUPLICATE KEY UPDATE `id` = `id`;
 -- Nạp Biến thể sản phẩm (SKU) có Barcode, giá bán, chiết suất và tồn kho
 INSERT INTO `product_variants` (`id`, `product_id`, `sku`, `barcode`, `name`, `color`, `frame_shape`, `material`, `lens_index`, `price`, `cost_price`, `stock_quantity`, `image_url`, `status`) VALUES
 -- Bolon Square BJ3120
-(1, 1, 'FRM-BOLON-BJ3120-BLK', '893850123401', 'Gọng Bolon Titanium - Đen Titan Nhám', 'Đen nhám', 'Mắt vuông', 'Titanium', NULL, 3250000, 1800000, 38, 'https://images.unsplash.com/photo-1591076482161-42ce6da69f67?w=500', 'ACTIVE'),
-(2, 1, 'FRM-BOLON-BJ3120-GLD', '893850123402', 'Gọng Bolon Titanium - Vàng Hồng Rose Gold', 'Vàng hồng', 'Mắt vuông', 'Titanium', NULL, 3450000, 1900000, 24, 'https://images.unsplash.com/photo-1574258495973-f010dfbb5371?w=500', 'ACTIVE'),
-(3, 1, 'FRM-BOLON-BJ3120-SIL', '893850123403', 'Gọng Bolon Titanium - Bạc Sang Trọng', 'Bạc xước', 'Mắt vuông', 'Titanium', NULL, 3250000, 1800000, 18, 'https://images.unsplash.com/photo-1574258495973-f010dfbb5371?w=500', 'ACTIVE'),
+(1, 1, 'FRM-BOLON-BJ3120-BLK', '893850123401', 'Gọng Bolon Titanium - Đen Titan Nhám', 'Đen nhám', 'Mắt vuông', 'Titanium', NULL, 3000, 1000, 38, 'https://images.unsplash.com/photo-1591076482161-42ce6da69f67?w=500', 'ACTIVE'),
+(2, 1, 'FRM-BOLON-BJ3120-GLD', '893850123402', 'Gọng Bolon Titanium - Vàng Hồng Rose Gold', 'Vàng hồng', 'Mắt vuông', 'Titanium', NULL, 3000, 1000, 24, 'https://images.unsplash.com/photo-1574258495973-f010dfbb5371?w=500', 'ACTIVE'),
+(3, 1, 'FRM-BOLON-BJ3120-SIL', '893850123403', 'Gọng Bolon Titanium - Bạc Sang Trọng', 'Bạc xước', 'Mắt vuông', 'Titanium', NULL, 3000, 1000, 18, 'https://images.unsplash.com/photo-1574258495973-f010dfbb5371?w=500', 'ACTIVE'),
 
 -- Gentle Monster South Side
-(4, 2, 'FRM-GM-SOUTHSIDE-BLK', '893850123404', 'Gọng Gentle Monster TR90 - Đen Bóng', 'Đen bóng', 'Mắt tròn', 'Nhựa TR90', NULL, 1850000, 950000, 45, 'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=500', 'ACTIVE'),
-(5, 2, 'FRM-GM-SOUTHSIDE-TOR', '893850123405', 'Gọng Gentle Monster TR90 - Đồi Mồi Nâu', 'Đồi mồi', 'Mắt tròn', 'Nhựa TR90', NULL, 1850000, 950000, 28, 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=500', 'ACTIVE'),
+(4, 2, 'FRM-GM-SOUTHSIDE-BLK', '893850123404', 'Gọng Gentle Monster TR90 - Đen Bóng', 'Đen bóng', 'Mắt tròn', 'Nhựa TR90', NULL, 3000, 1000, 45, 'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=500', 'ACTIVE'),
+(5, 2, 'FRM-GM-SOUTHSIDE-TOR', '893850123405', 'Gọng Gentle Monster TR90 - Đồi Mồi Nâu', 'Đồi mồi', 'Mắt tròn', 'Nhựa TR90', NULL, 3000, 1000, 28, 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=500', 'ACTIVE'),
 
 -- Ray-Ban Aviator Optical
-(6, 3, 'FRM-RB-AVIATOR-GLD', '893850123406', 'Gọng Ray-Ban Aviator - Mạ Vàng Kim 18K', 'Vàng kim', 'Aviator', 'Hợp kim', NULL, 4100000, 2400000, 20, 'https://images.unsplash.com/photo-1577803645773-f96470509666?w=500', 'ACTIVE'),
-(7, 3, 'FRM-RB-AVIATOR-SIL', '893850123407', 'Gọng Ray-Ban Aviator - Bạc Chrome', 'Bạc chrome', 'Aviator', 'Hợp kim', NULL, 3950000, 2300000, 15, 'https://images.unsplash.com/photo-1577803645773-f96470509666?w=500', 'ACTIVE'),
+(6, 3, 'FRM-RB-AVIATOR-GLD', '893850123406', 'Gọng Ray-Ban Aviator - Mạ Vàng Kim 18K', 'Vàng kim', 'Aviator', 'Hợp kim', NULL, 3000, 1000, 20, 'https://images.unsplash.com/photo-1577803645773-f96470509666?w=500', 'ACTIVE'),
+(7, 3, 'FRM-RB-AVIATOR-SIL', '893850123407', 'Gọng Ray-Ban Aviator - Bạc Chrome', 'Bạc chrome', 'Aviator', 'Hợp kim', NULL, 3000, 1000, 15, 'https://images.unsplash.com/photo-1577803645773-f96470509666?w=500', 'ACTIVE'),
 
 -- Charmant Titanium Z ZT2233
-(8, 4, 'FRM-CHARMANT-ZT2233', '893850123408', 'Gọng Charmant Titanium Z Khoan Không Viền', 'Xám nòng súng', 'Không viền', 'Titanium Z', NULL, 6850000, 4200000, 12, 'https://images.unsplash.com/photo-1591076482161-42ce6da69f67?w=500', 'ACTIVE'),
+(8, 4, 'FRM-CHARMANT-ZT2233', '893850123408', 'Gọng Charmant Titanium Z Khoan Không Viền', 'Xám nòng súng', 'Không viền', 'Titanium Z', NULL, 3000, 1000, 12, 'https://images.unsplash.com/photo-1591076482161-42ce6da69f67?w=500', 'ACTIVE'),
 
 -- Bolon Retro Chic BJ7150
-(9, 5, 'FRM-BOLON-BJ7150-ROSE', '893850123409', 'Gọng Đa Giác Bolon Retro Chic - Vàng Hồng', 'Vàng hồng', 'Đa giác', 'Titanium', NULL, 3650000, 2100000, 22, 'https://images.unsplash.com/photo-1574258495973-f010dfbb5371?w=500', 'ACTIVE'),
+(9, 5, 'FRM-BOLON-BJ7150-ROSE', '893850123409', 'Gọng Đa Giác Bolon Retro Chic - Vàng Hồng', 'Vàng hồng', 'Đa giác', 'Titanium', NULL, 3000, 1000, 22, 'https://images.unsplash.com/photo-1574258495973-f010dfbb5371?w=500', 'ACTIVE'),
 
 -- Gentle Monster Milan
-(10, 6, 'FRM-GM-MILAN-CRY', '893850123410', 'Gọng Acetate Gentle Monster Milan - Trong Suốt', 'Trong suốt', 'Mắt tròn', 'Acetate', NULL, 2450000, 1350000, 30, 'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=500', 'ACTIVE'),
+(10, 6, 'FRM-GM-MILAN-CRY', '893850123410', 'Gọng Acetate Gentle Monster Milan - Trong Suốt', 'Trong suốt', 'Mắt tròn', 'Acetate', NULL, 3000, 1000, 30, 'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=500', 'ACTIVE'),
 
 -- Tròng Chemi U2 1.60
-(11, 7, 'LNS-CHEMI-U2-160', '893850123411', 'Cặp Tròng Chemi U2 BlueCut 1.60', 'Trong suốt', NULL, 'Chất dẻo quang học', '1.60', 650000, 320000, 120, 'https://images.unsplash.com/photo-1582142839970-2b9da988941f?w=500', 'ACTIVE'),
+(11, 7, 'LNS-CHEMI-U2-160', '893850123411', 'Cặp Tròng Chemi U2 BlueCut 1.60', 'Trong suốt', NULL, 'Chất dẻo quang học', '1.60', 2500, 800, 120, 'https://images.unsplash.com/photo-1582142839970-2b9da988941f?w=500', 'ACTIVE'),
 
 -- Tròng Essilor Transitions 1.56
-(12, 8, 'LNS-ESS-TRANS-156', '893850123412', 'Cặp Tròng Essilor Transitions Gen 8 1.56', 'Đổi màu khói', NULL, 'Chất dẻo quang học', '1.56', 3380000, 1950000, 40, 'https://images.unsplash.com/photo-1582142839970-2b9da988941f?w=500', 'ACTIVE'),
+(12, 8, 'LNS-ESS-TRANS-156', '893850123412', 'Cặp Tròng Essilor Transitions Gen 8 1.56', 'Đổi màu khói', NULL, 'Chất dẻo quang học', '1.56', 2500, 800, 40, 'https://images.unsplash.com/photo-1582142839970-2b9da988941f?w=500', 'ACTIVE'),
 
 -- Tròng Essilor Crizal Rock 1.67
-(13, 9, 'LNS-ESS-CRIZAL-167', '893850123413', 'Cặp Tròng Essilor Crizal Rock 1.67 Blue UV', 'Trong suốt', NULL, 'Chất dẻo quang học', '1.67', 1980000, 1100000, 65, 'https://images.unsplash.com/photo-1582142839970-2b9da988941f?w=500', 'ACTIVE'),
+(13, 9, 'LNS-ESS-CRIZAL-167', '893850123413', 'Cặp Tròng Essilor Crizal Rock 1.67 Blue UV', 'Trong suốt', NULL, 'Chất dẻo quang học', '1.67', 2500, 800, 65, 'https://images.unsplash.com/photo-1582142839970-2b9da988941f?w=500', 'ACTIVE'),
 
 -- Tròng Carl Zeiss ClearView 1.67
-(14, 10, 'LNS-ZEISS-167', '893850123414', 'Cặp Tròng Zeiss ClearView 1.67 BlueGuard', 'Trong suốt', NULL, 'Chất dẻo quang học', '1.67', 4250000, 2600000, 25, 'https://images.unsplash.com/photo-1582142839970-2b9da988941f?w=500', 'ACTIVE'),
+(14, 10, 'LNS-ZEISS-167', '893850123414', 'Cặp Tròng Zeiss ClearView 1.67 BlueGuard', 'Trong suốt', NULL, 'Chất dẻo quang học', '1.67', 2500, 800, 25, 'https://images.unsplash.com/photo-1582142839970-2b9da988941f?w=500', 'ACTIVE'),
 
 -- Tròng Đa Tròng Essilor Varilux 1.60
-(15, 11, 'LNS-ESS-VARILUX-160', '893850123415', 'Cặp Tròng Đa Tròng Essilor Varilux Comfort Max 1.60', 'Trong suốt', NULL, 'Chất dẻo quang học', '1.60', 5650000, 3400000, 15, 'https://images.unsplash.com/photo-1582142839970-2b9da988941f?w=500', 'ACTIVE'),
+(15, 11, 'LNS-ESS-VARILUX-160', '893850123415', 'Cặp Tròng Đa Tròng Essilor Varilux Comfort Max 1.60', 'Trong suốt', NULL, 'Chất dẻo quang học', '1.60', 2500, 800, 15, 'https://images.unsplash.com/photo-1582142839970-2b9da988941f?w=500', 'ACTIVE'),
 
 -- Tròng Chemi U6 1.74 Siêu Mỏng
-(16, 12, 'LNS-CHEMI-U6-174', '893850123416', 'Cặp Tròng Chemi Crystal U6 1.74 Siêu Mỏng', 'Trong suốt', NULL, 'Chất dẻo quang học', '1.74', 2500000, 1400000, 35, 'https://images.unsplash.com/photo-1582142839970-2b9da988941f?w=500', 'ACTIVE'),
+(16, 12, 'LNS-CHEMI-U6-174', '893850123416', 'Cặp Tròng Chemi Crystal U6 1.74 Siêu Mỏng', 'Trong suốt', NULL, 'Chất dẻo quang học', '1.74', 2500, 800, 35, 'https://images.unsplash.com/photo-1582142839970-2b9da988941f?w=500', 'ACTIVE'),
 
 -- Kính râm Wayfarer
-(17, 13, 'SUN-RB-WAYF-BLK', '893850123417', 'Kính Râm Ray-Ban Classic Wayfarer Polarized', 'Đen bóng', 'Mắt vuông', 'Acetate', NULL, 4950000, 2900000, 18, 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=500', 'ACTIVE'),
+(17, 13, 'SUN-RB-WAYF-BLK', '893850123417', 'Kính Râm Ray-Ban Classic Wayfarer Polarized', 'Đen bóng', 'Mắt vuông', 'Acetate', NULL, 4000, 1200, 18, 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=500', 'ACTIVE'),
 
 -- Kính mát Oakley Holbrook
-(18, 14, 'SUN-OAK-HOLBROOK-BLU', '893850123418', 'Kính Mát Oakley Holbrook Prizm Sapphire', 'Đen mờ Sapphire', 'Mắt vuông thể thao', 'O-Matter', NULL, 3950000, 2300000, 20, 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=500', 'ACTIVE'),
+(18, 14, 'SUN-OAK-HOLBROOK-BLU', '893850123418', 'Kính Mát Oakley Holbrook Prizm Sapphire', 'Đen mờ Sapphire', 'Mắt vuông thể thao', 'O-Matter', NULL, 4000, 1200, 20, 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=500', 'ACTIVE'),
 
 -- Phụ kiện
-(19, 15, 'ACC-BOX-LEATHER', '893850123419', 'Hộp Đựng Kính Da Khâu Tay Chống Sốc', 'Nâu bò', NULL, 'Da PU', NULL, 180000, 75000, 150, 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500', 'ACTIVE'),
-(20, 15, 'ACC-NANO-SPRAY', '893850123420', 'Chai Xịt Nano Kháng Khuẩn & Chống Bám Bụi (60ml)', 'Trong suốt', NULL, 'Dung dịch nano', NULL, 95000, 35000, 300, 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500', 'ACTIVE'),
-(21, 15, 'ACC-MICRO-CLOTH', '893850123421', 'Khăn Lau Kính Microfiber Nhãn Khoa Cao Cấp', 'Xanh navy', NULL, 'Sợi Microfiber', NULL, 35000, 12000, 500, 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500', 'ACTIVE')
+(19, 15, 'ACC-BOX-LEATHER', '893850123419', 'Hộp Đựng Kính Da Khâu Tay Chống Sốc', 'Nâu bò', NULL, 'Da PU', NULL, 3500, 1000, 150, 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500', 'ACTIVE'),
+(20, 15, 'ACC-NANO-SPRAY', '893850123420', 'Chai Xịt Nano Kháng Khuẩn & Chống Bám Bụi (60ml)', 'Trong suốt', NULL, 'Dung dịch nano', NULL, 2500, 800, 300, 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500', 'ACTIVE'),
+(21, 15, 'ACC-MICRO-CLOTH', '893850123421', 'Khăn Lau Kính Microfiber Nhãn Khoa Cao Cấp', 'Xanh navy', NULL, 'Sợi Microfiber', NULL, 2500, 800, 500, 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500', 'ACTIVE')
 ON DUPLICATE KEY UPDATE `id` = `id`;
 
 

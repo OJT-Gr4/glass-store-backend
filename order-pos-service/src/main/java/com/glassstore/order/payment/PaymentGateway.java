@@ -3,6 +3,9 @@ package com.glassstore.order.payment;
 import com.glassstore.order.domain.PaymentMethod;
 
 import java.math.BigDecimal;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Abstraction over a real payment provider (FR-PAY-01/02/06/07).
@@ -26,19 +29,41 @@ public interface PaymentGateway {
     /**
      * Verifies a provider callback.
      *
-     * @param rawPayload the exact bytes received, needed for signature verification
-     * @param signature  the provider's signature header
+     * @param rawPayload the original provider payload
+     * @param signature the authentication header required by the provider (signature or IPN secret)
      */
     VerificationResult verifyCallback(String rawPayload, String signature);
+
+    /**
+     * Actively queries the payment provider for the current settlement status of an order.
+     * Allows reliable verification without depending solely on inbound webhooks (e.g. during local development).
+     */
+    default java.util.Optional<VerificationResult> queryStatus(String orderCode) {
+        return java.util.Optional.empty();
+    }
 
     record InitiationRequest(String orderCode, BigDecimal amount, String description) {
     }
 
     record InitiationResult(String provider, String externalTransactionId, String paymentUrl,
-                            String qrContent, boolean requiresCustomerAction) {
+                            String qrContent, boolean requiresCustomerAction,
+                            String httpMethod, Map<String, String> formFields) {
+        public InitiationResult {
+            formFields = Collections.unmodifiableMap(new LinkedHashMap<>(formFields));
+        }
+
+        public InitiationResult(String provider, String externalTransactionId, String paymentUrl,
+                                String qrContent, boolean requiresCustomerAction) {
+            this(provider, externalTransactionId, paymentUrl, qrContent, requiresCustomerAction, "GET", Map.of());
+        }
     }
 
     record VerificationResult(boolean valid, String provider, String externalTransactionId,
-                              String orderCode, BigDecimal amount, boolean success, String message) {
+                              String orderCode, BigDecimal amount, boolean success, String message,
+                              String providerOrderId, String paymentReference) {
+        public VerificationResult(boolean valid, String provider, String externalTransactionId,
+                                  String orderCode, BigDecimal amount, boolean success, String message) {
+            this(valid, provider, externalTransactionId, orderCode, amount, success, message, null, null);
+        }
     }
 }
