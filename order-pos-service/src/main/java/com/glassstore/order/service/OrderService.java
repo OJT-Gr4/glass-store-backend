@@ -78,7 +78,7 @@ public class OrderService {
                 || orderRepository.findByIdempotencyKey(requestIdempotencyKey).isPresent())
             throw com.glassstore.common.exception.ApiException.of(com.glassstore.common.exception.ErrorCode.IDEMPOTENCY_CONFLICT,
                     "Idempotency-Key thuộc đơn cũ chưa có dấu nội dung. Tra cứu đơn cũ, không thanh toán lại.");
-        if (order.getPaymentMethod()!=PaymentMethod.CASH && !order.isManualPaymentConfirmed())
+        if (order.getPaymentMethod()!=PaymentMethod.CASH && !order.isManualPaymentConfirmed() && !order.isGatewayRequested())
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Thu ngân phải xác nhận đã nhận tiền chuyển khoản/thẻ tại quầy.");
         order.setStaffName(actorName);
         if (order.getChannel() == SalesChannel.POS) promotions.calculate(order, token, true);
@@ -153,7 +153,7 @@ public class OrderService {
         if (order.getChannel() == SalesChannel.POS) order.setStatus(OrderStatus.PENDING_PAYMENT);
         Order saved = orderRepository.save(order);
 
-        if ((saved.getChannel() == SalesChannel.POS)) {
+        if (saved.getChannel() == SalesChannel.POS && !saved.isGatewayRequested()) {
             saved = orderStatusService.transition(saved, OrderStatus.PAID, saved.getStaffName(), "Thanh toán tại quầy");
             promotions.consume(saved);
         }
@@ -167,10 +167,12 @@ public class OrderService {
                 .idempotencyKey(requestIdempotencyKey != null
                         ? requestIdempotencyKey
                         : UUID.randomUUID().toString())
-                .status(PaymentStatus.SUCCESS)
-                .paidAt(LocalDateTime.now())
-                .confirmationMode(saved.getPaymentMethod()==PaymentMethod.CASH?"CASH_RECEIVED":saved.getPaymentMethod()==PaymentMethod.VIETQR?"MANUAL_TRANSFER":"CARD_TERMINAL")
-                .confirmedBy(actorName).confirmedAt(LocalDateTime.now()).paymentReference(order.getPaymentReference())
+                .status(saved.isGatewayRequested() ? PaymentStatus.PENDING : PaymentStatus.SUCCESS)
+                .paidAt(saved.isGatewayRequested() ? null : LocalDateTime.now())
+                .confirmationMode(saved.isGatewayRequested() ? "SEPAY_GATEWAY" : saved.getPaymentMethod()==PaymentMethod.CASH?"CASH_RECEIVED":saved.getPaymentMethod()==PaymentMethod.VIETQR?"MANUAL_TRANSFER":"CARD_TERMINAL")
+                .confirmedBy(saved.isGatewayRequested() ? null : actorName)
+                .confirmedAt(saved.isGatewayRequested() ? null : LocalDateTime.now())
+                .paymentReference(order.getPaymentReference())
                 .build();
         paymentRepository.save(payment);
         checkout.setOrderId(saved.getId());
