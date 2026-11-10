@@ -52,10 +52,26 @@ public class LabJobController {
         return ResponseEntity.ok(ApiResponse.success("OK", labJobService.getLabJobById(job.getId())));
     }
 
+    @GetMapping("/order/{orderId}")
+    public ResponseEntity<ApiResponse<List<LabJobResponse>>> getAllByOrder(@PathVariable("orderId") Long orderId) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Lấy danh sách lệnh gia công theo đơn hàng thành công",
+                labJobService.getLabJobsByOrderId(orderId)));
+    }
+
     @GetMapping
     public ResponseEntity<ApiResponse<List<LabJobResponse>>> getLabJobs(
-            @RequestParam(name = "status", required = false) LabJobStatus status) {
-        log.info("API GET /api/lab-jobs - Lọc theo status: {}", status);
+            @RequestParam(name = "status", required = false) LabJobStatus status,
+            @RequestParam(name = "orderId", required = false) Long orderId) {
+        log.info("API GET /api/lab-jobs - Lọc theo status: {}, orderId: {}", status, orderId);
+        if (orderId != null) {
+            List<LabJobResponse> byOrder = labJobService.getLabJobsByOrderId(orderId);
+            if (status != null) {
+                byOrder = byOrder.stream().filter(j -> status.name().equals(j.getStatus())).toList();
+            }
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Lấy danh sách lệnh gia công mài kính theo đơn hàng thành công", byOrder));
+        }
         return ResponseEntity.ok(ApiResponse.success(
                 "Lấy danh sách lệnh gia công mài kính thành công", labJobService.getLabJobs(status)));
     }

@@ -35,7 +35,6 @@ import java.util.stream.Collectors;
 
 /** SePay Payment Gateway sandbox: signed checkout form and SECRET_KEY-authenticated IPN. */
 @Component
-@ConditionalOnProperty(name = "payment.provider", havingValue = "sepay")
 @RequiredArgsConstructor
 @Slf4j
 public class SePayGateway implements PaymentGateway {

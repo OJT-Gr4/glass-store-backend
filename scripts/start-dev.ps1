@@ -1,4 +1,4 @@
-param([switch]$SkipBuild, [switch]$SkipInstall, [switch]$CheckOnly)
+param([switch]$SkipBuild, [switch]$SkipInstall, [switch]$CheckOnly, [switch]$Visible)
 . "$PSScriptRoot/common.ps1"
 Import-GlassStoreEnvironment
 $workspaceRoot = Split-Path $script:BackendRoot -Parent
@@ -7,19 +7,27 @@ $portalRoot = Get-Setting 'INTERNAL_PORTAL_DIR' (Join-Path $workspaceRoot 'front
 $ports=Get-ApplicationPorts
 if (@($ports.Values | Sort-Object -Unique).Count -ne 7) { throw 'Application ports must be distinct.' }
 foreach ($root in @($customerRoot,$portalRoot)) { if (-not (Test-Path -LiteralPath (Join-Path $root 'package.json'))) { throw "Frontend missing: $root. Use the documented folder layout or set its directory in backend/.env." } }
-$previousErrorPolicy=$ErrorActionPreference
-$ErrorActionPreference='Continue'
 $java = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin/java.exe' } else { 'java.exe' }
-$javaCommand=Get-Command $java -ErrorAction SilentlyContinue
-$testVer = if ($javaCommand) { (& $javaCommand.Source -version 2>&1 | Out-String) } else { '' }
-if (-not $javaCommand -or $testVer -notmatch 'version "21[\."]') {
-    foreach ($candidate in @("C:\Users\Admin\.jdks\temurin-21.0.10", "C:\Users\Admin\.jdks\dragonwell-ex-21.0.10")) {
-        if (Test-Path -LiteralPath "$candidate\bin\java.exe") {
-            $env:JAVA_HOME = $candidate
-            $java = Join-Path $env:JAVA_HOME 'bin/java.exe'
-            $javaCommand = Get-Command $java -ErrorAction SilentlyContinue
-            break
-        }
+$javaCommand = Get-Command $java -ErrorAction SilentlyContinue
+$isJava21 = $false
+if ($javaCommand) {
+    $previousErrorPolicy = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $testVer = (& $javaCommand.Source -version 2>&1 | Out-String) } finally { $ErrorActionPreference = $previousErrorPolicy }
+    if ($testVer -match 'version "21[\."]') { $isJava21 = $true }
+}
+if (-not $isJava21) {
+    $candidates = @(
+        'C:\Users\Admin\.jdks\temurin-21.0.10\bin\java.exe',
+        'C:\Users\Admin\.jdks\dragonwell-ex-21.0.10\bin\java.exe',
+        'C:\Program Files\Java\jdk-21*\bin\java.exe',
+        'C:\Program Files\Java\jdk-21\bin\java.exe',
+        'C:\Program Files\Eclipse Adoptium\jdk-21*\bin\java.exe',
+        'C:\Program Files\Microsoft\jdk-21*\bin\java.exe'
+    )
+    foreach ($c in $candidates) {
+        $found = Get-Item $c -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($found) { $javaCommand = Get-Command $found.FullName -ErrorAction SilentlyContinue; break }
     }
 }
 if (-not $javaCommand) { throw 'Java not found. Set JAVA_HOME to a JDK 21 installation.' }
@@ -38,7 +46,23 @@ if ($occupied.Count) { throw "Ports already occupied: $(($occupied | ForEach-Obj
 & "$PSScriptRoot/setup-db.ps1" -Mode (Get-Setting 'DB_MODE' 'native') -CheckOnly
 if (-not $SkipBuild) {
     $maven=Get-Setting 'MVN_CMD' 'mvn.cmd'
-    if (-not (Get-Command $maven -ErrorAction SilentlyContinue)) { throw 'Maven 3.9+ not found. Add mvn.cmd to PATH or set MVN_CMD in backend/.env.' }
+    if (-not (Get-Command $maven -ErrorAction SilentlyContinue)) {
+        $candidateMaven = @(
+            'C:\Program Files\Maven\bin\mvn.cmd',
+            'C:\Program Files\apache-maven\bin\mvn.cmd',
+            'C:\apache-maven\bin\mvn.cmd'
+        )
+        if ($env:MAVEN_HOME) { $candidateMaven += (Join-Path $env:MAVEN_HOME 'bin\mvn.cmd') }
+        if ($env:M2_HOME) { $candidateMaven += (Join-Path $env:M2_HOME 'bin\mvn.cmd') }
+        $foundMaven = Get-ChildItem -Path 'C:\Program Files\Maven*', 'C:\Program Files\apache-maven*' -Filter 'mvn.cmd' -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($foundMaven) { $candidateMaven += $foundMaven.FullName }
+        foreach ($c in $candidateMaven) {
+            if (Test-Path -LiteralPath $c) { $maven = $c; break }
+        }
+    }
+    if (-not (Get-Command $maven -ErrorAction SilentlyContinue) -and -not (Test-Path -LiteralPath $maven)) {
+        throw 'Maven 3.9+ not found. Add mvn.cmd to PATH or set MVN_CMD in backend/.env.'
+    }
     Push-Location $script:BackendRoot
     try { & $maven '-DskipTests' package; if($LASTEXITCODE -ne 0){throw 'Backend package failed; no services were started.'} } finally { Pop-Location }
 }
@@ -54,7 +78,12 @@ try {
     foreach ($service in @('identity-service','catalog-service','order-pos-service','eyewear-lab-service','api-gateway')) {
         $jar=Join-Path $script:BackendRoot "$service/target/$service-1.0.0.jar"
         if (-not (Test-Path -LiteralPath $jar)) { throw "Missing $jar" }
-        $proc=Start-Process -FilePath $javaCommand.Source -ArgumentList @('-Xms64m','-Xmx256m','-jar',$jar) -WorkingDirectory $script:BackendRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:RuntimeRoot "$service.log") -RedirectStandardError (Join-Path $script:RuntimeRoot "$service.err.log") -PassThru
+        if ($Visible) {
+            $cmdLine = "title [$service] && echo =================== LOG $service =================== && `"$($javaCommand.Source)`" -Xms64m -Xmx256m -jar `"$jar`""
+            $proc=Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', $cmdLine) -WorkingDirectory $script:BackendRoot -PassThru
+        } else {
+            $proc=Start-Process -FilePath $javaCommand.Source -ArgumentList @('-Xms64m','-Xmx256m','-jar',$jar) -WorkingDirectory $script:BackendRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:RuntimeRoot "$service.log") -RedirectStandardError (Join-Path $script:RuntimeRoot "$service.err.log") -PassThru
+        }
         $records += [pscustomobject]@{Name=$service;Id=$proc.Id;StartedAt=$proc.StartTime.ToUniversalTime().ToString('o')}
     }
     foreach($site in @(@{Name='customer-web';Root=$customerRoot},@{Name='internal-portal';Root=$portalRoot})) {
@@ -69,7 +98,12 @@ try {
         try {
             $env:VITE_PORT=[string]$ports[$site.Name]
             $env:VITE_PROXY_TARGET="http://127.0.0.1:$($ports['api-gateway'])"
-            $proc=Start-Process -FilePath 'cmd.exe' -ArgumentList '/d','/c','npm run dev' -WorkingDirectory $site.Root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:RuntimeRoot "$($site.Name).log") -RedirectStandardError (Join-Path $script:RuntimeRoot "$($site.Name).err.log") -PassThru
+            if ($Visible) {
+                $cmdLine = "title [$($site.Name)] && set VITE_PORT=$($ports[$site.Name]) && set VITE_PROXY_TARGET=http://127.0.0.1:$($ports['api-gateway']) && npm run dev"
+                $proc=Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', $cmdLine) -WorkingDirectory $site.Root -PassThru
+            } else {
+                $proc=Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','npm run dev' -WorkingDirectory $site.Root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:RuntimeRoot "$($site.Name).log") -RedirectStandardError (Join-Path $script:RuntimeRoot "$($site.Name).err.log") -PassThru
+            }
         } finally {$env:VITE_PORT=$previousVitePort;$env:VITE_PROXY_TARGET=$previousProxy}
         $records += [pscustomobject]@{Name=$site.Name;Id=$proc.Id;StartedAt=$proc.StartTime.ToUniversalTime().ToString('o')}
     }

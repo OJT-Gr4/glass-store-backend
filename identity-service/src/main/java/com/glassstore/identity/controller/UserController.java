@@ -2,10 +2,12 @@ package com.glassstore.identity.controller;
 
 import com.glassstore.common.dto.ApiResponse;
 import com.glassstore.identity.dto.*;
+import com.glassstore.identity.security.UserPrincipal;
 import com.glassstore.identity.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -32,6 +34,13 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success("Lấy danh sách khách hàng thành công", customers));
     }
 
+    @GetMapping("/customers/search")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SALES_STAFF', 'OPTOMETRIST')")
+    public ResponseEntity<ApiResponse<List<UserDTO>>> searchCustomers(@RequestParam(name = "q", required = false) String query) {
+        List<UserDTO> customers = userService.searchCustomers(query);
+        return ResponseEntity.ok(ApiResponse.success("Tìm kiếm khách hàng thành công", customers));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','SALES_STAFF','OPTOMETRIST') or #id == authentication.principal.id")
     public ResponseEntity<ApiResponse<UserDTO>> getUserById(@PathVariable("id") Long id) {
@@ -51,6 +60,38 @@ public class UserController {
     public ResponseEntity<ApiResponse<UserDTO>> createCustomer(@RequestBody CreateCustomerRequest request) {
         UserDTO user = userService.createCustomer(request);
         return ResponseEntity.ok(ApiResponse.success("Tạo hồ sơ khách hàng thành công", user));
+    }
+
+    @PutMapping("/customers/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SALES_STAFF','OPTOMETRIST') or #id == authentication.principal.id")
+    public ResponseEntity<ApiResponse<UserDTO>> updateCustomer(
+            @PathVariable("id") Long id,
+            @RequestBody UpdateCustomerRequest request) {
+        UserDTO user = userService.updateCustomer(id, request);
+        return ResponseEntity.ok(ApiResponse.success("Cập nhật hồ sơ khách hàng thành công", user));
+    }
+
+    @GetMapping("/customers/{id}/interactions")
+    @PreAuthorize("hasAnyRole('ADMIN','SALES_STAFF','OPTOMETRIST') or #id == authentication.principal.id")
+    public ResponseEntity<ApiResponse<List<CustomerInteractionDTO>>> getCustomerInteractions(@PathVariable("id") Long id) {
+        List<CustomerInteractionDTO> interactions = userService.getCustomerInteractions(id);
+        return ResponseEntity.ok(ApiResponse.success("Lấy lịch sử chăm sóc khách hàng thành công", interactions));
+    }
+
+    @PostMapping("/customers/{id}/interactions")
+    @PreAuthorize("hasAnyRole('ADMIN','SALES_STAFF','OPTOMETRIST')")
+    public ResponseEntity<ApiResponse<CustomerInteractionDTO>> addCustomerInteraction(
+            @PathVariable("id") Long id,
+            @RequestBody CreateInteractionRequest request,
+            Authentication authentication) {
+        Long staffId = null;
+        String staffName = "Nhân viên CRM";
+        if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal principal) {
+            staffId = principal.getId();
+            staffName = principal.getUsername();
+        }
+        CustomerInteractionDTO result = userService.addCustomerInteraction(id, staffId, staffName, request);
+        return ResponseEntity.ok(ApiResponse.success("Thêm ghi chú chăm sóc thành công", result));
     }
 
     @PatchMapping("/{id}/status")

@@ -55,12 +55,38 @@ public class OrderCancellationService {
 
     @Transactional
     public Order confirmRefund(Long id,String token) {
-        String actor=data.actor(token,false).path("username").asText();
+        String actor;
+        try {
+            actor = data.actor(token, false).path("username").asText();
+        } catch (Exception ignored) {
+            actor = com.glassstore.common.security.CurrentActor.name();
+        }
+        if (actor == null || actor.isBlank()) {
+            actor = com.glassstore.common.security.CurrentActor.name();
+        }
         Order order=orders.lockById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
-        if(!(order.getStatus() == OrderStatus.CANCELLED))throw new ResponseStatusException(HttpStatus.CONFLICT,"Chỉ xác nhận hoàn tiền sau khi hủy hoàn tất.");
+        if (order.getStatus() == OrderStatus.REFUNDED && "CONFIRMED".equals(order.getRefundStatus())) {
+            return order;
+        }
+        if(!Set.of(OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING).contains(order.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"Chỉ xác nhận hoàn tiền cho đơn đã hủy hoặc đang chờ hoàn tiền.");
+        }
         if(!"CONFIRMED".equals(order.getRefundStatus())) {
-            order.setRefundStatus("CONFIRMED");order.setRefundConfirmedBy(actor);order.setRefundConfirmedAt(LocalDateTime.now());orders.save(order);
-            payments.findByOrderId(id).forEach(payment->{payment.setStatus(PaymentStatus.REFUNDED);payments.save(payment);});
+            order.setRefundStatus("CONFIRMED");
+            order.setRefundConfirmedBy(actor);
+            order.setRefundConfirmedAt(LocalDateTime.now());
+            if (order.getStatus() == OrderStatus.REFUND_PENDING) {
+                order = statuses.transition(order, OrderStatus.REFUNDED, actor, "Đã xác nhận hoàn tiền cho khách hàng");
+            } else {
+                orders.save(order);
+            }
+            payments.findByOrderId(id).forEach(payment->{
+                if (payment.getStatus() == PaymentStatus.SUCCESS || payment.getStatus() == PaymentStatus.REFUND_PENDING) {
+                    payment.setStatus(PaymentStatus.REFUNDED);
+                    payment.setUpdatedAt(LocalDateTime.now());
+                    payments.save(payment);
+                }
+            });
         }
         return order;
     }

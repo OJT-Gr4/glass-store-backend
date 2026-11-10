@@ -15,8 +15,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
  * a paid order. Replace this bean with a real adapter once a provider is selected.</p>
  */
 @Component
-@ConditionalOnProperty(
-        name = "payment.provider", havingValue = "unconfigured", matchIfMissing = true)
 @Slf4j
 public class UnconfiguredPaymentGateway implements PaymentGateway {
 

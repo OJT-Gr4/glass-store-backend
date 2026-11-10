@@ -29,7 +29,8 @@ public class InventoryService {
         quantities.forEach((sku, quantity) -> {
             InventoryBalance balance = balanceRepository.findBySkuAndLocationCode(sku, request.branchCode())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "SKU không có ở chi nhánh: " + sku));
-            if (balance.getQuantity() < quantity || balance.getVariant().getStockQuantity() < quantity)
+            if (balance.getSellableQuantity() < quantity
+                    || balance.getVariant().getAvailableQuantity() < quantity)
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Không đủ tồn tại chi nhánh cho SKU " + sku);
         });
     }
@@ -141,9 +142,9 @@ public class InventoryService {
                 throw new ResponseStatusException(
                         HttpStatus.CONFLICT, "SKU " + sku + " chưa có số liệu tồn tại kho đích.");
             }
-            if (requestedItem.getQuantity() > sourceBalance.getQuantity()) {
+            if (requestedItem.getQuantity() > sourceBalance.getSellableQuantity()) {
                 throw new ResponseStatusException(
-                        HttpStatus.CONFLICT, "Số lượng SKU " + sku + " vượt tồn kho hiện tại tại kho nguồn.");
+                        HttpStatus.CONFLICT, "Số lượng SKU " + sku + " vượt tồn bán được tại kho nguồn.");
             }
             items.add(StockTransferItem.builder()
                     .variant(variant)

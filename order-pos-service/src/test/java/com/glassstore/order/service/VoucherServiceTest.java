@@ -103,4 +103,29 @@ class VoucherServiceTest {
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.VOUCHER_NOT_FOUND);
     }
+
+    @Test
+    @DisplayName("Admin CRUD: create, toggle, and list vouchers")
+    void adminVoucherLifecycle() {
+        Voucher newVoucher = Voucher.builder()
+                .code("NEWCODE")
+                .name("New Program")
+                .discountType("PERCENT")
+                .discountValue(new BigDecimal("10"))
+                .active(true)
+                .build();
+        when(repository.findByCodeIgnoreCase("NEWCODE")).thenReturn(Optional.empty());
+        when(repository.save(org.mockito.ArgumentMatchers.any(Voucher.class))).thenAnswer(i -> i.getArgument(0));
+
+        Voucher created = service.createVoucher(newVoucher);
+        assertThat(created.getCode()).isEqualTo("NEWCODE");
+        assertThat(created.isActive()).isTrue();
+
+        when(repository.findById(1L)).thenReturn(Optional.of(created));
+        Voucher toggled = service.toggleActive(1L);
+        assertThat(toggled.isActive()).isFalse();
+
+        when(repository.findAll()).thenReturn(java.util.List.of(toggled));
+        assertThat(service.getAllVouchers()).hasSize(1);
+    }
 }

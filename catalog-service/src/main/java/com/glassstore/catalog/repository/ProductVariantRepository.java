@@ -17,6 +17,10 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     Optional<ProductVariant> findBySku(String sku);
     Optional<ProductVariant> findByBarcode(String barcode);
     boolean existsBySku(String sku);
+    boolean existsByBarcode(String barcode);
+    boolean existsBySkuAndIdNot(String sku, Long id);
+    boolean existsByBarcodeAndIdNot(String barcode, Long id);
+    List<ProductVariant> findByProductId(Long productId);
 
     /**
      * Loads variants for a stock mutation with a row-level write lock, so concurrent

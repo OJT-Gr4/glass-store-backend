@@ -15,6 +15,10 @@ public class InventorySecurityConfig {
             .authorizeHttpRequests(a -> a
                 .requestMatchers(HttpMethod.OPTIONS,"/**").permitAll().requestMatchers("/error").permitAll()
                 .requestMatchers("/api/catalog/admin/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/inventory/suppliers").hasAnyRole("ADMIN","LAB","LAB_TECH")
+                .requestMatchers("/api/inventory/suppliers/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/inventory/vouchers/*/approve", "/api/inventory/vouchers/*/reject").hasRole("ADMIN")
+                .requestMatchers("/api/inventory/vouchers/**", "/api/inventory/defects/**").hasAnyRole("ADMIN","LAB","LAB_TECH")
                 .requestMatchers(HttpMethod.GET, "/api/locations").permitAll()
                 .requestMatchers(HttpMethod.GET,"/api/products","/api/products/**","/api/categories/**").permitAll()
                 .requestMatchers("/internal/**").hasRole("SERVICE")

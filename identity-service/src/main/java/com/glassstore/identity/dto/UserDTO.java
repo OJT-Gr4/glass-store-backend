@@ -15,9 +15,14 @@ public class UserDTO {
     private String email;
     private String fullName;
     private String phoneNumber;
+    private boolean phoneVerified;
     private String employeeCode;
     private String branchName;
     private String status;
+    private String address;
+    private String gender;
+    private boolean marketingConsent;
+    private LocalDateTime marketingConsentUpdatedAt;
     private Set<String> roles;
     private LocalDateTime createdAt;
 }

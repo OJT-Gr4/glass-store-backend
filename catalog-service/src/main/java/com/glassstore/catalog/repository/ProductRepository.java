@@ -15,6 +15,11 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     List<Product> findByCategoryId(Long categoryId);
     List<Product> findByProductType(ProductType productType);
     List<Product> findByStatus(String status);
+    List<Product> findByBrandId(Long brandId);
     boolean existsByCategory_Id(Long categoryId);
     boolean existsByBrand_Id(Long brandId);
+    boolean existsBySlug(String slug);
+    boolean existsBySlugAndIdNot(String slug, Long id);
+    boolean existsByNameIgnoreCase(String name);
+    boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
 }

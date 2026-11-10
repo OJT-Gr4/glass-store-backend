@@ -27,7 +27,7 @@ function Test-TcpEndpoint([string]$address, [int]$port) {
     $client = [Net.Sockets.TcpClient]::new()
     try {
         $pending = $client.BeginConnect($address,$port,$null,$null)
-        if (-not $pending.AsyncWaitHandle.WaitOne(1500)) { return $false }
+        if (-not $pending.AsyncWaitHandle.WaitOne(500)) { return $false }
         $client.EndConnect($pending)
         return $true
     } catch { return $false } finally { $client.Dispose() }
@@ -43,7 +43,21 @@ function Invoke-GlassStoreSql([string]$sql) {
             $result = $sql | & docker.exe exec -i glassstore-dev-mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --default-character-set=utf8mb4 --batch --raw --skip-column-names -u root'
         } else {
             $mysql = Get-Setting 'MYSQL_EXE' 'mysql.exe'
-            if (-not (Get-Command $mysql -ErrorAction SilentlyContinue)) { throw 'mysql.exe not found. Add MySQL bin to PATH or set MYSQL_EXE in backend/.env.' }
+            if (-not (Get-Command $mysql -ErrorAction SilentlyContinue)) {
+                $candidates = @(
+                    'C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe',
+                    'C:\Program Files\MySQL\MySQL Server 8.4\bin\mysql.exe',
+                    'C:\Program Files\MySQL\MySQL Server 9.0\bin\mysql.exe',
+                    'C:\tools\mysql\bin\mysql.exe',
+                    'C:\xampp\mysql\bin\mysql.exe'
+                )
+                foreach ($c in $candidates) {
+                    if (Test-Path -LiteralPath $c) { $mysql = $c; break }
+                }
+            }
+            if (-not (Get-Command $mysql -ErrorAction SilentlyContinue) -and -not (Test-Path -LiteralPath $mysql)) {
+                throw 'mysql.exe not found. Add MySQL bin to PATH or set MYSQL_EXE in backend/.env.'
+            }
             $env:MYSQL_PWD = Get-Setting 'DB_PASSWORD' 'root'
             $result = $sql | & $mysql '--default-character-set=utf8mb4' '--batch' '--raw' '--skip-column-names' '--protocol=TCP' '-h' (Get-Setting 'DB_HOST' '127.0.0.1') '-P' (Get-Setting 'DB_PORT' '3306') '-u' (Get-Setting 'DB_USERNAME' 'root')
         }

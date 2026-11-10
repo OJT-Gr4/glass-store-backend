@@ -3,6 +3,7 @@ package com.glassstore.identity.controller;
 import com.glassstore.common.dto.ApiResponse;
 import com.glassstore.identity.dto.*;
 import com.glassstore.identity.security.UserPrincipal;
+import com.glassstore.identity.service.OtpService;
 import com.glassstore.identity.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final UserService userService;
+    private final OtpService otpService;
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<UserDTO>> register(@Valid @RequestBody CustomerRegisterRequest request) {
@@ -51,5 +53,23 @@ public class AuthController {
         }
         UserDTO user = userService.getCurrentUser(principal.getId());
         return ResponseEntity.ok(ApiResponse.success("Lấy thông tin người dùng hiện tại thành công", user));
+    }
+
+    @PostMapping("/otp/send")
+    public ResponseEntity<ApiResponse<OtpSendResponse>> sendOtp(@Valid @RequestBody OtpSendRequest request) {
+        OtpSendResponse response = otpService.sendOtp(request);
+        return ResponseEntity.ok(ApiResponse.success("Đã gửi mã xác thực OTP tới số điện thoại đã đăng ký", response));
+    }
+
+    @PostMapping("/otp/verify")
+    public ResponseEntity<ApiResponse<OtpVerifyResponse>> verifyOtp(@Valid @RequestBody OtpVerifyRequest request) {
+        OtpVerifyResponse response = otpService.verifyPhoneOtp(request);
+        return ResponseEntity.ok(ApiResponse.success("Xác thực số điện thoại thành công", response));
+    }
+
+    @PostMapping("/password/reset")
+    public ResponseEntity<ApiResponse<OtpVerifyResponse>> resetPassword(@Valid @RequestBody PasswordResetRequest request) {
+        OtpVerifyResponse response = otpService.resetPassword(request);
+        return ResponseEntity.ok(ApiResponse.success("Đặt lại mật khẩu thành công! Vui lòng đăng nhập bằng mật khẩu mới.", response));
     }
 }

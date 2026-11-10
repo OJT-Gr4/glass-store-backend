@@ -21,6 +21,7 @@ public class LoginResponse {
     private String fullName;
     private String email;
     private String phoneNumber;
+    private boolean phoneVerified;
     private String employeeCode;
     private String branchName;
     private Set<String> roles;

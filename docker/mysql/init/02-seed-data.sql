@@ -40,8 +40,27 @@ CREATE TABLE IF NOT EXISTS `users` (
     `status` VARCHAR(20) DEFAULT 'ACTIVE',
     `failed_attempts` INT DEFAULT 0,
     `lockout_expiration` TIMESTAMP NULL DEFAULT NULL,
+    `phone_verified` BOOLEAN NOT NULL DEFAULT FALSE,
+    `token_version` INT NOT NULL DEFAULT 0,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `otp_challenges` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `challenge_code` VARCHAR(64) NOT NULL UNIQUE,
+    `user_id` BIGINT NOT NULL,
+    `phone_number` VARCHAR(20) NOT NULL,
+    `purpose` VARCHAR(32) NOT NULL,
+    `code_hash` VARCHAR(255) NOT NULL,
+    `expires_at` DATETIME(6) NOT NULL,
+    `attempt_count` INT NOT NULL DEFAULT 0,
+    `max_attempts` INT NOT NULL DEFAULT 5,
+    `consumed_at` DATETIME(6) NULL,
+    `invalidated_at` DATETIME(6) NULL,
+    `created_at` DATETIME(6) NOT NULL,
+    INDEX `idx_otp_user_purpose` (`user_id`, `purpose`),
+    INDEX `idx_otp_challenge_code` (`challenge_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `user_roles` (
@@ -336,6 +355,65 @@ INSERT INTO `lab_jobs` (`id`, `idempotency_key`, `order_item_id`, `order_id`, `p
 (6, 'LAB_REQ_1006_12', 12, 1006, 6, 'FRM-GM-SOUTHSIDE-BLK', 'LNS-ESS-TRANS-156', 8, 'QC_PASSED', 'Mài lắp hoàn hảo, kiểm tra lực xiết ốc bản lề 0.18 N.m đạt chuẩn Bench Alignment')
 ON DUPLICATE KEY UPDATE `id` = `id`;
 
+-- Bảo hành & Chính sách bảo hành theo phiên bản (S3-10)
+CREATE TABLE IF NOT EXISTS `warranties` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `warranty_code` VARCHAR(255) NOT NULL UNIQUE,
+    `original_order_code` VARCHAR(255) NULL,
+    `order_id` BIGINT NULL,
+    `order_item_id` BIGINT NULL,
+    `benefit_type` VARCHAR(40) NULL,
+    `activated_at` DATETIME(6) NULL,
+    `expires_at` DATETIME(6) NULL,
+    `product_barcode` VARCHAR(255) NULL,
+    `customer_id` BIGINT NULL,
+    `customer_name` VARCHAR(255) NOT NULL,
+    `customer_phone` VARCHAR(255) NULL,
+    `customer_tier` VARCHAR(255) NULL,
+    `product_name` VARCHAR(255) NOT NULL,
+    `product_sku` VARCHAR(255) NULL,
+    `terms_and_conditions` VARCHAR(1000) NULL,
+    `policy` VARCHAR(255) NULL,
+    `status` VARCHAR(50) NULL,
+    `status_label` VARCHAR(255) NULL,
+    `created_at` DATETIME(6) NULL,
+    `updated_at` DATETIME(6) NULL,
+    CONSTRAINT `uk_warranty_order_item_benefit` UNIQUE (`order_item_id`, `benefit_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `warranty_policies` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `policy_code` VARCHAR(64) NOT NULL,
+    `benefit_type` VARCHAR(40) NOT NULL,
+    `version` INT NOT NULL DEFAULT 1,
+    `duration_days` INT NULL,
+    `coverage_terms` VARCHAR(1000) NOT NULL,
+    `eligible_sku_prefixes` VARCHAR(120) NULL,
+    `service_fee` DECIMAL(12, 2) DEFAULT 0.00,
+    `effective_from` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    `active` BOOLEAN NOT NULL DEFAULT TRUE,
+    `updated_by` VARCHAR(100) NULL,
+    `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    INDEX `idx_warranty_policy_benefit_active` (`benefit_type`, `active`, `version`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `warranty_policies` (`id`, `policy_code`, `benefit_type`, `version`, `duration_days`, `coverage_terms`, `service_fee`, `active`, `updated_by`) VALUES
+(1, 'POL_EXCHANGE_30D', 'EXCHANGE_30_DAYS', 1, 30, 'Đổi mới sản phẩm lỗi do nhà sản xuất trong vòng 30 ngày', 0.00, TRUE, 'system'),
+(2, 'POL_LENS_COAT_180D', 'LENS_COATING', 1, 180, 'Bảo hành bong tróc lớp váng phủ tròng kính trong 6 tháng', 0.00, TRUE, 'system'),
+(3, 'POL_FRAME_ADJ_365D', 'FRAME_ADJUSTMENT', 1, 365, 'Căn chỉnh gọng, thay đệm mũi và ốc vít miễn phí 1 năm', 0.00, TRUE, 'system')
+ON DUPLICATE KEY UPDATE `id` = `id`;
+
+CREATE TABLE IF NOT EXISTS `warranty_claim_histories` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `warranty_id` BIGINT NOT NULL,
+    `old_status` VARCHAR(50) NULL,
+    `new_status` VARCHAR(50) NOT NULL,
+    `reason` VARCHAR(500) NULL,
+    `changed_by` VARCHAR(100) NULL,
+    `changed_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    INDEX `idx_claim_history_warranty` (`warranty_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 -- ==============================================================================
 -- 4. SCHEMA: db_order (Giỏ hàng, Đơn online, Bán tại quầy POS & Thanh toán đa kênh)
@@ -360,6 +438,12 @@ CREATE TABLE IF NOT EXISTS `orders` (
     `discount_amount` DECIMAL(12, 2) DEFAULT 0.00,
     `final_amount` DECIMAL(12, 2) NOT NULL,
     `status` VARCHAR(30) NOT NULL DEFAULT 'PAID',
+    `cancel_reason` VARCHAR(255) NULL,
+    `cancelled_by` VARCHAR(255) NULL,
+    `cancelled_at` DATETIME(6) NULL,
+    `refund_status` VARCHAR(255) NULL,
+    `refund_confirmed_by` VARCHAR(255) NULL,
+    `refund_confirmed_at` DATETIME(6) NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

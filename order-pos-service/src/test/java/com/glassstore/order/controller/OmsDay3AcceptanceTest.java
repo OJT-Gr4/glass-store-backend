@@ -108,4 +108,46 @@ class OmsDay3AcceptanceTest {
         assertEquals(OrderStatus.SHIPPING,saved.getStatus()); assertEquals("QA-123",saved.getTrackingCode());
         assertEquals("1",history.findByOrderIdOrderByChangedAtAsc(order.getId()).get(0).getActor());
     }
+
+    @Test void cancelRejectRestoresPreviousStatusAndRefundConfirmTransitionsPaidCancellationToRefunded() throws Exception {
+        var order = order(OrderStatus.CONFIRMED, OrderType.FRAME_ONLY, SalesChannel.ONLINE);
+        order.setCustomerId(1L);
+        orders.saveAndFlush(order);
+        var payment = payments.saveAndFlush(Payment.builder()
+            .orderId(order.getId()).paymentMethod(PaymentMethod.VNPAY)
+            .amount(BigDecimal.TEN).status(PaymentStatus.SUCCESS).build());
+
+        // 1. Customer requests cancellation -> CANCEL_REQUESTED
+        mvc.perform(post("/api/orders/" + order.getId() + "/cancel-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reason\":\"Đổi ý\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("CANCEL_REQUESTED"));
+
+        // 2. Staff rejects cancellation -> Restores CONFIRMED
+        mvc.perform(post("/api/orders/" + order.getId() + "/cancel-reject")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reason\":\"Đơn đang chuẩn bị đóng gói\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("CONFIRMED"));
+
+        // 3. Customer requests cancellation again -> Staff approves -> REFUND_PENDING
+        mvc.perform(post("/api/orders/" + order.getId() + "/cancel-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reason\":\"Khách xin hủy lại\"}"))
+            .andExpect(status().isOk());
+        mvc.perform(post("/api/orders/" + order.getId() + "/cancel")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reason\":\"Nhân viên duyệt hủy\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("REFUND_PENDING"));
+        assertEquals(PaymentStatus.REFUND_PENDING, payments.findById(payment.getId()).orElseThrow().getStatus());
+
+        // 4. Staff confirms refund -> Order REFUNDED & Payment REFUNDED
+        mvc.perform(post("/api/orders/" + order.getId() + "/refund-confirm"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("REFUNDED"))
+            .andExpect(jsonPath("$.data.refundStatus").value("CONFIRMED"));
+        assertEquals(PaymentStatus.REFUNDED, payments.findById(payment.getId()).orElseThrow().getStatus());
+    }
 }

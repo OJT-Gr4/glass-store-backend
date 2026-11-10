@@ -22,10 +22,21 @@ if ($Mode -eq 'docker' -and -not $CheckOnly) {
 if ($Mode -eq 'native' -and -not $CheckOnly) {
     $tableCount = [int](Invoke-GlassStoreSql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema IN ('db_identity','db_catalog','db_order','db_lab');")
     if ($tableCount -gt 0) {
-        throw 'GlassStore schemas already contain tables. No seed was imported and no data was changed. Use -CheckOnly for an existing database; use reviewed migrations for upgrades.'
-    }
-    foreach ($file in @('01-init-databases.sql','02-seed-data.sql','03-opening-inventory.sql')) {
-        Invoke-GlassStoreSql ([IO.File]::ReadAllText((Join-Path $script:BackendRoot "docker/mysql/init/$file"),[Text.Encoding]::UTF8)) | Out-Null
+        Write-Host "GlassStore schemas already contain tables ($tableCount tables found)."
+        Write-Host "Ensuring Sprint 3 tables, columns and policies are synchronized..."
+        $s3Migration = Join-Path $script:BackendRoot 'docker/mysql/migrations/20261109-sprint3-otp-warranty.sql'
+        if (Test-Path -LiteralPath $s3Migration) {
+            $sqlContent = [IO.File]::ReadAllText($s3Migration, [Text.Encoding]::UTF8)
+            Invoke-GlassStoreSql $sqlContent | Out-Null
+            Write-Host "Sprint 3 database schema verified and synchronized."
+        }
+    } else {
+        Write-Host "Empty schemas detected. Importing fresh canonical dataset..."
+        foreach ($file in @('01-init-databases.sql','02-seed-data.sql','03-opening-inventory.sql')) {
+            Write-Host "  -> Importing $file"
+            Invoke-GlassStoreSql ([IO.File]::ReadAllText((Join-Path $script:BackendRoot "docker/mysql/init/$file"),[Text.Encoding]::UTF8)) | Out-Null
+        }
+        Write-Host "Fresh database initialized successfully."
     }
 }
 

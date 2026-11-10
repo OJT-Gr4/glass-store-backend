@@ -14,6 +14,12 @@ public interface UserService {
     void deleteUser(Long id);
     LoginResponse login(LoginRequest request);
 
+    // Customer CRUD, consent & interaction history (S3-04)
+    UserDTO updateCustomer(Long id, UpdateCustomerRequest request);
+    List<UserDTO> searchCustomers(String query);
+    List<CustomerInteractionDTO> getCustomerInteractions(Long customerId);
+    CustomerInteractionDTO addCustomerInteraction(Long customerId, Long staffId, String staffName, CreateInteractionRequest request);
+
     // Phương thức Authentication không OTP mới
     UserDTO registerCustomer(CustomerRegisterRequest request);
     LoginResponse refreshToken(String refreshToken);

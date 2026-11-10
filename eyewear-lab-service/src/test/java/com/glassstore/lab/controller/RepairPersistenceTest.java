@@ -24,11 +24,20 @@ class RepairPersistenceTest {
     @Autowired ObjectMapper json;
     @Autowired EntityManager entities;
     @Autowired RepairServiceRepository repairs;
+    @org.springframework.boot.test.mock.mockito.MockBean com.glassstore.lab.client.WarrantyOrderClient orderClient;
     private Map<String,Object> request() {
-        return new HashMap<>(Map.of("customerName","Khách QA","customerPhone","0901234567","productName","Gọng QA",
+        org.mockito.Mockito.when(orderClient.getPurchaseItem(10L, 20L)).thenReturn(
+                new com.glassstore.lab.dto.WarrantyOrderItemDTO(
+                        10L, 20L, "ORD-001", 1L, "Khách QA", "0901234567",
+                        "SKU-001", "Gọng QA", LocalDateTime.now().minusDays(2), "PAID", null, null, 0, null));
+        var map = new HashMap<String, Object>(Map.of("customerName","Khách QA","customerPhone","0901234567","productName","Gọng QA",
             "frameCondition","Lỏng ốc","lensCondition","Tròng nguyên vẹn","reportedProblem","Kính lỏng",
             "physicalCondition","Không trầy khác","requestedServices",List.of("FRAME_ADJUSTMENT","SCREW_TIGHTENING"),
             "receptionEmployee","QA Staff","expectedPickupAt",LocalDateTime.now().plusHours(2).toString()));
+        map.put("orderId", 10L);
+        map.put("orderItemId", 20L);
+        map.put("customerId", 1L);
+        return map;
     }
     @Test void receptionPersistsAndStatusHistorySurvivesReload() throws Exception {
         String body=mvc.perform(post("/api/repair-services").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(request())))

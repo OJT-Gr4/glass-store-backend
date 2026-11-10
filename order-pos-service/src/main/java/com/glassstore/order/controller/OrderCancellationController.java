@@ -34,6 +34,7 @@ public class OrderCancellationController {
     private final PaymentRepository paymentRepository;
     private final OrderStatusService orderStatusService;
     private final OrderInventoryService inventoryService;
+    private final com.glassstore.order.repository.OrderStatusHistoryRepository historyRepository;
     private final com.glassstore.order.repository.StockDeductionOutboxRepository stockOutboxes;
     private final com.glassstore.order.service.OrderCancellationService posCancellations;
 
@@ -97,6 +98,65 @@ public class OrderCancellationController {
         inventoryService.release(updated, reason);
         log.info("Order {} cancelled by {} -> {}", updated.getOrderCode(), actor, target);
         return ResponseEntity.ok(ApiResponse.success("Đã hủy đơn hàng", updated));
+    }
+
+    /** Staff rejects a customer cancellation request and restores the previous processing state (S3-11.2). */
+    @PostMapping("/{id}/cancel-reject")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<ApiResponse<Order>> rejectCancellation(
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) OrderDtos.CancelRequest body) {
+        if (com.glassstore.common.security.CurrentActor.customer()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN,
+                    "Chỉ nhân viên mới có quyền từ chối yêu cầu hủy đơn");
+        }
+        Order order = orderRepository.lockById(id).orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND));
+        if (order.currentStatus() != OrderStatus.CANCEL_REQUESTED) {
+            throw ApiException.of(ErrorCode.ORDER_INVALID_TRANSITION,
+                    "Chỉ từ chối được đơn đang ở trạng thái chờ duyệt hủy (CANCEL_REQUESTED)");
+        }
+
+        boolean paid = paymentRepository.existsByOrderIdAndStatus(id, PaymentStatus.SUCCESS);
+        OrderStatus restoreStatus = historyRepository.findByOrderIdOrderByChangedAtAsc(id).stream()
+                .filter(h -> h.getToStatus() == OrderStatus.CANCEL_REQUESTED && h.getFromStatus() != null)
+                .reduce((first, second) -> second)
+                .map(com.glassstore.order.entity.OrderStatusHistory::getFromStatus)
+                .filter(s -> OrderStatus.CANCEL_REQUESTED.canTransitionTo(s))
+                .orElse(paid ? OrderStatus.CONFIRMED : OrderStatus.PENDING_PAYMENT);
+
+        String reason = body == null || body.getReason() == null || body.getReason().isBlank()
+                ? "Từ chối yêu cầu hủy đơn hàng"
+                : body.getReason().trim();
+
+        Order updated = orderStatusService.transition(order, restoreStatus,
+                com.glassstore.common.security.CurrentActor.name(), reason);
+        return ResponseEntity.ok(ApiResponse.success("Đã từ chối yêu cầu hủy đơn và khôi phục xử lý", updated));
+    }
+
+    /** Customer requests return/exchange for completed order (GLAS-17 S3-17). */
+    @PostMapping("/{id}/return-request")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<ApiResponse<Order>> requestReturn(
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) OrderDtos.CancelRequest body) {
+
+        Order order = requireOrder(id);
+        com.glassstore.common.security.CurrentActor.requireOwner(order.getCustomerId());
+        String reason = body == null || body.getReason() == null || body.getReason().isBlank()
+                ? "Khách yêu cầu đổi / trả hàng" : body.getReason().trim();
+
+        historyRepository.save(com.glassstore.order.entity.OrderStatusHistory.builder()
+                .order(order)
+                .fromStatus(order.currentStatus())
+                .toStatus(order.currentStatus())
+                .actor(com.glassstore.common.security.CurrentActor.name())
+                .reason("YÊU CẦU ĐỔI/TRẢ HÀNG: " + reason)
+                .changedAt(java.time.LocalDateTime.now())
+                .build());
+
+        log.info("Khách hàng #{} gửi yêu cầu đổi/trả cho đơn #{}: {}", order.getCustomerId(), order.getOrderCode(), reason);
+        return ResponseEntity.ok(ApiResponse.success("Đã tiếp nhận yêu cầu đổi / trả hàng. Nhân viên sẽ liên hệ trong 24h.", order));
     }
 
     private Order requireOrder(Long id) {

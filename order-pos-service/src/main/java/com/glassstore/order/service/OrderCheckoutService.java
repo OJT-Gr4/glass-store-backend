@@ -33,7 +33,6 @@ import java.util.concurrent.ThreadLocalRandom;
  * Prices and totals are recomputed server-side (BR-05, BR-16).</p>
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class OrderCheckoutService {
 
@@ -51,6 +50,48 @@ public class OrderCheckoutService {
     private final LabDispatchService labDispatchService;
     private final StockDeductionService stockDeductionService;
     private final PromotionService promotions;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public OrderCheckoutService(OrderRepository orderRepository,
+                                PaymentRepository paymentRepository,
+                                BasketPricingService pricingService,
+                                OrderStatusService orderStatusService,
+                                OrderInventoryService inventoryService,
+                                LabClient labClient,
+                                WarrantyActivationService warrantyActivationService,
+                                LabServiceClient labServiceClient,
+                                CheckoutIdempotencyService idempotency,
+                                LabDispatchService labDispatchService,
+                                @org.springframework.beans.factory.annotation.Autowired(required = false) StockDeductionService stockDeductionService,
+                                @org.springframework.beans.factory.annotation.Autowired(required = false) PromotionService promotions) {
+        this.orderRepository = orderRepository;
+        this.paymentRepository = paymentRepository;
+        this.pricingService = pricingService;
+        this.orderStatusService = orderStatusService;
+        this.inventoryService = inventoryService;
+        this.labClient = labClient;
+        this.warrantyActivationService = warrantyActivationService;
+        this.labServiceClient = labServiceClient;
+        this.idempotency = idempotency;
+        this.labDispatchService = labDispatchService;
+        this.stockDeductionService = stockDeductionService;
+        this.promotions = promotions;
+    }
+
+    public OrderCheckoutService(OrderRepository orderRepository,
+                                PaymentRepository paymentRepository,
+                                BasketPricingService pricingService,
+                                OrderStatusService orderStatusService,
+                                OrderInventoryService inventoryService,
+                                LabClient labClient,
+                                WarrantyActivationService warrantyActivationService,
+                                LabServiceClient labServiceClient,
+                                CheckoutIdempotencyService idempotency,
+                                LabDispatchService labDispatchService) {
+        this(orderRepository, paymentRepository, pricingService, orderStatusService,
+                inventoryService, labClient, warrantyActivationService, labServiceClient,
+                idempotency, labDispatchService, null, null);
+    }
 
     @Transactional
     public CheckoutOutcome checkout(OrderDtos.CheckoutRequest request, String idempotencyKey) {
@@ -228,8 +269,12 @@ public class OrderCheckoutService {
         OrderStatus previous = order.currentStatus();
         Order paid = orderStatusService.transition(order, OrderStatus.PAID, actor, reason);
         if (paid.getChannel() == SalesChannel.POS) {
-            stockDeductionService.enqueue(paid, payment);
-            promotions.consume(paid);
+            if (stockDeductionService != null) {
+                stockDeductionService.enqueue(paid, payment);
+            }
+            if (promotions != null) {
+                promotions.consume(paid);
+            }
         } else {
             inventoryService.onStatusChanged(paid, previous, OrderStatus.PAID);
         }

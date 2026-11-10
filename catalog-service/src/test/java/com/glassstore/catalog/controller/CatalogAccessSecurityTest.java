@@ -58,4 +58,23 @@ class CatalogAccessSecurityTest {
                 .andExpect(status().isOk());
         mvc.perform(get("/api/locations")).andExpect(status().isOk());
     }
+
+    @Test void stockVoucherApprovalAndSupplierChangesRequireAdmin() throws Exception {
+        mvc.perform(get("/api/inventory/vouchers")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/inventory/vouchers")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_SALES_STAFF"))))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/inventory/vouchers")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_LAB"))))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/api/inventory/vouchers/1/approve")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_LAB"))))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/inventory/suppliers")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_LAB")))
+                .contentType("application/json")
+                .content("{\"code\":\"SUP-1\",\"name\":\"Supplier\"}"))
+                .andExpect(status().isForbidden());
+    }
 }
