@@ -329,10 +329,15 @@ public class UserServiceImpl implements UserService {
 
         identifier = identifier.trim();
         final String searchKey = identifier;
+        final String normPhone = OtpServiceImpl.normalizePhone(searchKey);
         User user = userRepository.findByEmail(searchKey.toLowerCase())
                 .or(() -> userRepository.findByUsername(searchKey))
                 .or(() -> userRepository.findByEmployeeCode(searchKey))
                 .or(() -> userRepository.findByEmployeeCode(searchKey.toUpperCase()))
+                .or(() -> userRepository.findFirstByPhoneNumber(searchKey))
+                .or(() -> (normPhone != null && !normPhone.isBlank())
+                        ? userRepository.findFirstByPhoneNumber(normPhone)
+                        : Optional.empty())
                 .orElseThrow(() -> new BadCredentialsException("Email hoặc mật khẩu không chính xác!"));
 
         // 1. Kiểm tra khóa tài khoản (Brute Force Protection)

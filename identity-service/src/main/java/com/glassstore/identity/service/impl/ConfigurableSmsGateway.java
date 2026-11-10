@@ -24,7 +24,7 @@ public class ConfigurableSmsGateway implements SmsGateway {
 
     private final ObjectMapper objectMapper;
 
-    @Value("${sms.provider.url:}")
+    @Value("${sms.provider.url:sandbox}")
     private String providerUrl;
 
     @Value("${sms.provider.api-key:}")

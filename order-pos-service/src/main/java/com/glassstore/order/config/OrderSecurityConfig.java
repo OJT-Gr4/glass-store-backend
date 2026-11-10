@@ -22,10 +22,10 @@ public class OrderSecurityConfig {
                 .requestMatchers("/internal/location-references/**").hasRole("SERVICE")
                 .requestMatchers(HttpMethod.GET,"/api/orders/*/history","/api/orders/*/warranty-activations").hasAnyRole("ADMIN","SALES_STAFF")
                 .requestMatchers(HttpMethod.GET,"/api/orders","/api/orders/**").hasAnyRole("ADMIN","SALES_STAFF","CUSTOMER")
-                .requestMatchers(HttpMethod.POST,"/api/orders","/api/orders/*/cancel-request").hasAnyRole("ADMIN","SALES_STAFF","CUSTOMER")
+                .requestMatchers(HttpMethod.POST,"/api/orders","/api/orders/*/cancel-request","/api/orders/*/return-request").hasAnyRole("ADMIN","SALES_STAFF","CUSTOMER")
                 .requestMatchers("/api/orders/**").hasAnyRole("ADMIN","SALES_STAFF")
-                .requestMatchers("/api/cart/**","/api/cart","/api/payments/**").hasAnyRole("ADMIN","SALES_STAFF","CUSTOMER")
-                .requestMatchers("/api/pos/**","/api/promotions/**","/api/vouchers/**","/api/loyalty/**").hasAnyRole("ADMIN","SALES_STAFF")
+                .requestMatchers("/api/cart/**","/api/cart","/api/payments/**","/api/vouchers/**","/api/loyalty/**").hasAnyRole("ADMIN","SALES_STAFF","CUSTOMER")
+                .requestMatchers("/api/pos/**","/api/promotions/**").hasAnyRole("ADMIN","SALES_STAFF")
                 .anyRequest().denyAll())
             .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(converter))).build();
     }

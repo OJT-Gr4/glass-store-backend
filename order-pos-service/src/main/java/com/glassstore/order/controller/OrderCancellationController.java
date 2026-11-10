@@ -134,6 +134,31 @@ public class OrderCancellationController {
         return ResponseEntity.ok(ApiResponse.success("Đã từ chối yêu cầu hủy đơn và khôi phục xử lý", updated));
     }
 
+    /** Customer requests return/exchange for completed order (GLAS-17 S3-17). */
+    @PostMapping("/{id}/return-request")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<ApiResponse<Order>> requestReturn(
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) OrderDtos.CancelRequest body) {
+
+        Order order = requireOrder(id);
+        com.glassstore.common.security.CurrentActor.requireOwner(order.getCustomerId());
+        String reason = body == null || body.getReason() == null || body.getReason().isBlank()
+                ? "Khách yêu cầu đổi / trả hàng" : body.getReason().trim();
+
+        historyRepository.save(com.glassstore.order.entity.OrderStatusHistory.builder()
+                .order(order)
+                .fromStatus(order.currentStatus())
+                .toStatus(order.currentStatus())
+                .actor(com.glassstore.common.security.CurrentActor.name())
+                .reason("YÊU CẦU ĐỔI/TRẢ HÀNG: " + reason)
+                .changedAt(java.time.LocalDateTime.now())
+                .build());
+
+        log.info("Khách hàng #{} gửi yêu cầu đổi/trả cho đơn #{}: {}", order.getCustomerId(), order.getOrderCode(), reason);
+        return ResponseEntity.ok(ApiResponse.success("Đã tiếp nhận yêu cầu đổi / trả hàng. Nhân viên sẽ liên hệ trong 24h.", order));
+    }
+
     private Order requireOrder(Long id) {
         return orderRepository.findById(id)
                 .orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND,

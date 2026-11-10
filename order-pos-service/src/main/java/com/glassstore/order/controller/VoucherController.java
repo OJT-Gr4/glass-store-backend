@@ -21,6 +21,34 @@ public class VoucherController {
     private final VoucherService voucherService;
     private final VoucherRepository voucherRepository;
 
+    @GetMapping
+    public ResponseEntity<ApiResponse<java.util.List<Voucher>>> getAll() {
+        return ResponseEntity.ok(ApiResponse.success("OK", voucherService.getAllVouchers()));
+    }
+
+    @PostMapping
+    public ResponseEntity<ApiResponse<Voucher>> create(@RequestBody Voucher voucher) {
+        return ResponseEntity.ok(ApiResponse.success("Tạo mã giảm giá thành công", voucherService.createVoucher(voucher)));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<Voucher>> update(
+            @PathVariable("id") Long id,
+            @RequestBody Voucher voucher) {
+        return ResponseEntity.ok(ApiResponse.success("Cập nhật mã giảm giá thành công", voucherService.updateVoucher(id, voucher)));
+    }
+
+    @PatchMapping("/{id}/toggle")
+    public ResponseEntity<ApiResponse<Voucher>> toggle(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Thay đổi trạng thái thành công", voucherService.toggleActive(id)));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable("id") Long id) {
+        voucherService.deleteVoucher(id);
+        return ResponseEntity.ok(ApiResponse.success("Xóa mã giảm giá thành công", null));
+    }
+
     @GetMapping("/{code}")
     public ResponseEntity<ApiResponse<Voucher>> get(@PathVariable("code") String code) {
         Voucher voucher = voucherRepository.findByCodeIgnoreCase(code)
