@@ -32,6 +32,8 @@ public class PaymentController {
     private final PaymentGateway paymentGateway;
     private final OrderRepository orders;
     private final org.springframework.beans.factory.ObjectProvider<SePayGateway> sePayGatewayProvider;
+    private final org.springframework.beans.factory.ObjectProvider<ConfigurableSandboxPaymentGateway> sandboxGatewayProvider;
+    private final com.glassstore.order.payment.SePayProperties sePayProperties;
 
     private void requireOwner(Long id) {
         var order = orders.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -110,12 +112,14 @@ public class PaymentController {
         String externalTxnId = "TXN-SIM-" + orderCode + "-" + System.currentTimeMillis();
 
         String sig = "";
-        ConfigurableSandboxPaymentGateway sandbox = null;
-        if (paymentGateway instanceof ConfigurableSandboxPaymentGateway csg) {
+        ConfigurableSandboxPaymentGateway sandbox = sandboxGatewayProvider.getIfAvailable();
+        if (sandbox == null && paymentGateway instanceof ConfigurableSandboxPaymentGateway csg) {
             sandbox = csg;
-        } else if (paymentGateway instanceof com.glassstore.order.payment.DelegatingPaymentGateway dpg
-                && dpg.delegate() instanceof ConfigurableSandboxPaymentGateway csg) {
-            sandbox = csg;
+        } else if (sandbox == null && paymentGateway instanceof com.glassstore.order.payment.DelegatingPaymentGateway dpg) {
+            PaymentGateway del = dpg.delegate("vietqr");
+            if (del instanceof ConfigurableSandboxPaymentGateway csg) {
+                sandbox = csg;
+            }
         }
         if (sandbox != null) {
             sig = sandbox.signCanonical(orderCode, effectiveAmount, externalTxnId, status);
@@ -126,6 +130,29 @@ public class PaymentController {
         PaymentService.CallbackOutcome outcome = paymentService.handleCallback(payload, sig);
         return ResponseEntity.ok(ApiResponse.success(
                 outcome.replayed() ? "Giao dịch đã được ghi nhận trước đó" : "Đã giả lập callback thanh toán thành công",
+                outcome.payment()));
+    }
+
+    @PostMapping("/sepay/simulate-ipn")
+    public ResponseEntity<ApiResponse<Payment>> simulateSepayIpn(
+            @RequestParam(name = "orderCode") String orderCode,
+            @RequestParam(name = "amount", required = false) BigDecimal amount) {
+        Order order = orders.findByOrderCode(orderCode).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn: " + orderCode));
+        BigDecimal effectiveAmount = amount != null ? amount : order.getFinalAmount();
+        String externalTxnId = "TXN-SEPAY-SIM-" + orderCode + "-" + System.currentTimeMillis();
+        long now = System.currentTimeMillis();
+
+        String payload = String.format("{\"notification_type\":\"ORDER_PAID\",\"timestamp\":%d," +
+                "\"order\":{\"id\":\"SEPAY-ORD-%s\",\"order_invoice_number\":\"%s\",\"order_amount\":\"%s\",\"order_currency\":\"VND\",\"order_status\":\"CAPTURED\"}," +
+                "\"transaction\":{\"id\":\"%s\",\"transaction_id\":\"%s\",\"transaction_type\":\"PAYMENT\",\"transaction_status\":\"APPROVED\",\"transaction_amount\":\"%s\",\"transaction_currency\":\"VND\",\"payment_method\":\"BANK_TRANSFER\"}}",
+                now, orderCode, orderCode, effectiveAmount.stripTrailingZeros().toPlainString(),
+                externalTxnId, externalTxnId, effectiveAmount.stripTrailingZeros().toPlainString());
+
+        String secret = sePayProperties != null ? sePayProperties.getIpnSecret() : "";
+        PaymentService.CallbackOutcome outcome = paymentService.handleCallback(payload, secret);
+        return ResponseEntity.ok(ApiResponse.success(
+                outcome.replayed() ? "Giao dịch đã được ghi nhận trước đó" : "Đã giả lập SePay IPN thành công",
                 outcome.payment()));
     }
 
