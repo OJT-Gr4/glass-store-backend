@@ -7,6 +7,7 @@ import com.glassstore.order.repository.OrderRepository;
 import com.glassstore.order.repository.OrderStatusHistoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,13 @@ public class OrderStatusService {
 
     private final OrderRepository orderRepository;
     private final OrderStatusHistoryRepository historyRepository;
+
+    @Autowired(required = false)
+    private OrderNotificationPublisher orderNotificationPublisher;
+
+    public void setOrderNotificationPublisher(OrderNotificationPublisher orderNotificationPublisher) {
+        this.orderNotificationPublisher = orderNotificationPublisher;
+    }
 
     /**
      * Applies a validated transition and appends history.
@@ -49,6 +57,14 @@ public class OrderStatusService {
                 .actor(actor == null || actor.isBlank() ? "SYSTEM" : actor)
                 .reason(reason)
                 .build());
+
+        if (orderNotificationPublisher != null) {
+            try {
+                orderNotificationPublisher.publishOrderStatus(saved, target);
+            } catch (Exception ex) {
+                log.warn("Non-fatal error publishing order notification {}: {}", saved.getOrderCode(), ex.getMessage());
+            }
+        }
 
         log.info("Order {} transitioned {} -> {} by {}", saved.getOrderCode(), current, target, actor);
         return saved;

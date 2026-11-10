@@ -19,8 +19,10 @@ import com.glassstore.lab.repository.LabJobRepository;
 import com.glassstore.lab.repository.LabQcHistoryRepository;
 import com.glassstore.lab.repository.PrescriptionRepository;
 import com.glassstore.lab.service.LabJobService;
+import com.glassstore.lab.service.LabNotificationPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,6 +46,13 @@ public class LabJobServiceImpl implements LabJobService {
     private final LabJobHistoryRepository historyRepository;
     private final LabQcHistoryRepository qcHistoryRepository;
     private final com.glassstore.lab.service.PrescriptionService prescriptionService;
+
+    @Autowired(required = false)
+    private LabNotificationPublisher labNotificationPublisher;
+
+    public void setLabNotificationPublisher(LabNotificationPublisher labNotificationPublisher) {
+        this.labNotificationPublisher = labNotificationPublisher;
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -297,6 +306,14 @@ public class LabJobServiceImpl implements LabJobService {
                     request.getTechnicianId(), request.getTechnicianName(), saved.getReworkCount(), request.getIdempotencyKey());
         }
 
+        if (requestedStatus == LabJobStatus.QC_PASSED
+                || requestedStatus == LabJobStatus.READY_FOR_DELIVERY
+                || requestedStatus == LabJobStatus.COMPLETED) {
+            publishLabReadySafely(saved);
+        } else if (requestedStatus == LabJobStatus.QC_FAILED || requestedStatus == LabJobStatus.REWORK) {
+            publishLabReworkSafely(saved);
+        }
+
         return getResponse(saved);
     }
 
@@ -389,6 +406,12 @@ public class LabJobServiceImpl implements LabJobService {
                 savedJob.getStatus().name(), actor,
                 "QC: " + request.getResult().name() + (reason != null ? " - " + reason : ""));
 
+        if (request.getResult() == QcResult.PASS) {
+            publishLabReadySafely(savedJob);
+        } else {
+            publishLabReworkSafely(savedJob);
+        }
+
         return LabQcResponse.from(savedQc);
     }
 
@@ -471,6 +494,8 @@ public class LabJobServiceImpl implements LabJobService {
 
         recordStatus(saved, previousStatus.name(), LabJobStatus.IN_PROGRESS.name(), actor,
                 "Lần mài lại thứ " + currentReworkCount + ": " + request.getReason().trim());
+
+        publishLabReworkSafely(saved);
 
         return getResponse(saved);
     }
@@ -556,6 +581,34 @@ public class LabJobServiceImpl implements LabJobService {
         if (axis != null && (axis < 0 || axis > 180)) {
             throw ApiException.of(ErrorCode.PRESCRIPTION_INCOMPLETE,
                     "Trục loạn " + eye + " phải nằm trong khoảng 0-180 độ");
+        }
+    }
+
+    private void publishLabReadySafely(LabJob saved) {
+        if (labNotificationPublisher == null || saved == null) {
+            return;
+        }
+        try {
+            Long customerId = null;
+            if (saved.getPrescriptionId() != null && prescriptionRepository != null) {
+                customerId = prescriptionRepository.findById(saved.getPrescriptionId())
+                        .map(Prescription::getCustomerId)
+                        .orElse(null);
+            }
+            labNotificationPublisher.publishLabReady(saved, customerId);
+        } catch (Exception ex) {
+            log.warn("Non-fatal error publishing LAB_READY notification for job {}: {}", saved.getId(), ex.getMessage());
+        }
+    }
+
+    private void publishLabReworkSafely(LabJob saved) {
+        if (labNotificationPublisher == null || saved == null) {
+            return;
+        }
+        try {
+            labNotificationPublisher.publishLabRework(saved);
+        } catch (Exception ex) {
+            log.warn("Non-fatal error publishing LAB_REWORK notification for job {}: {}", saved.getId(), ex.getMessage());
         }
     }
 

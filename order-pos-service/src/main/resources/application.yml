@@ -24,6 +24,8 @@ payment:
     return-base-url: ${SEPAY_RETURN_BASE_URL:http://localhost:5184}
 
 services:
+  identity-service:
+    url: ${IDENTITY_SERVICE_URL:http://127.0.0.1:${IDENTITY_PORT:8081}}
   catalog-service:
     url: ${CATALOG_SERVICE_URL:http://127.0.0.1:${CATALOG_PORT:8082}}
   eyewear-lab-service:
