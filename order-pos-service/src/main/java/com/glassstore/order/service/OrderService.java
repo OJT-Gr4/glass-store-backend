@@ -63,7 +63,9 @@ public class OrderService {
     public ResponseEntity<Order> create(Order order, String requestIdempotencyKey, String token) {
         if (order.getChannel() != SalesChannel.POS) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Đơn online phải dùng luồng checkout chờ thanh toán.");
         var actor = data.actor(token,false);
-        String actorName = actor.path("username").asText(actor.path("id").asText());
+        String actorName = actor.hasNonNull("fullName") && !actor.path("fullName").asText().isBlank()
+                ? actor.path("fullName").asText().trim()
+                : actor.path("username").asText(actor.path("id").asText());
         var checkout = idempotency.begin(requestIdempotencyKey,
                 order.getCheckoutRequestHash()!=null?order.getCheckoutRequestHash():idempotency.fingerprint(order),
                 "STAFF:" + actor.path("id").asText() + ":" + actorName);
