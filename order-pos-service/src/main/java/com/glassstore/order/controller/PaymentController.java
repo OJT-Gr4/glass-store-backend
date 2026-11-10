@@ -52,9 +52,10 @@ public class PaymentController {
 
     @PostMapping("/order/{orderId}/initiate")
     public ResponseEntity<ApiResponse<PaymentGateway.InitiationResult>> initiate(
-            @PathVariable("orderId") Long orderId) {
+            @PathVariable("orderId") Long orderId,
+            @RequestParam(name = "provider", required = false) String provider) {
         requireOwner(orderId);
-        return ResponseEntity.ok(ApiResponse.success("Đã khởi tạo thanh toán", paymentService.initiate(orderId)));
+        return ResponseEntity.ok(ApiResponse.success("Đã khởi tạo thanh toán", paymentService.initiate(orderId, provider)));
     }
 
     @PostMapping("/callback")

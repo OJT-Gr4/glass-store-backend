@@ -31,6 +31,18 @@ public class DelegatingPaymentGateway implements PaymentGateway {
         this.unconfiguredGateway = unconfiguredGateway;
     }
 
+    public PaymentGateway delegate(String provider) {
+        if ("sepay".equalsIgnoreCase(provider)) {
+            SePayGateway sg = sePayGateway.getIfAvailable();
+            if (sg != null) return sg;
+        }
+        if ("vietqr".equalsIgnoreCase(provider) || "sandbox".equalsIgnoreCase(provider) || "vnpay".equalsIgnoreCase(provider)) {
+            ConfigurableSandboxPaymentGateway csg = sandboxGateway.getIfAvailable();
+            if (csg != null) return csg;
+        }
+        return delegate();
+    }
+
     public PaymentGateway delegate() {
         if ("sepay".equalsIgnoreCase(configuredProvider)) {
             SePayGateway sg = sePayGateway.getIfAvailable();
@@ -56,24 +68,37 @@ public class DelegatingPaymentGateway implements PaymentGateway {
 
     @Override
     public InitiationResult initiate(InitiationRequest request) {
-        return delegate().initiate(request);
+        return delegate(request != null ? request.provider() : null).initiate(request);
     }
 
     @Override
     public VerificationResult verifyCallback(String rawPayload, String signature) {
-        PaymentGateway primary = delegate();
-        if (primary instanceof SePayGateway) {
-            return primary.verifyCallback(rawPayload, signature);
+        if (rawPayload != null && (rawPayload.contains("order_invoice_number") || rawPayload.contains("notification_type"))) {
+            SePayGateway sg = sePayGateway.getIfAvailable();
+            if (sg != null) {
+                return sg.verifyCallback(rawPayload, signature);
+            }
         }
-        SePayGateway sg = sePayGateway.getIfAvailable();
-        if (sg != null && (rawPayload.contains("order_invoice_number") || rawPayload.contains("notification_type"))) {
-            return sg.verifyCallback(rawPayload, signature);
+        if (rawPayload != null && (rawPayload.contains("orderCode") || rawPayload.contains("externalTransactionId"))) {
+            ConfigurableSandboxPaymentGateway csg = sandboxGateway.getIfAvailable();
+            if (csg != null) {
+                return csg.verifyCallback(rawPayload, signature);
+            }
         }
-        return primary.verifyCallback(rawPayload, signature);
+        return delegate().verifyCallback(rawPayload, signature);
     }
 
     @Override
     public Optional<VerificationResult> queryStatus(String orderCode) {
-        return delegate().queryStatus(orderCode);
+        SePayGateway sg = sePayGateway.getIfAvailable();
+        if (sg != null) {
+            Optional<VerificationResult> res = sg.queryStatus(orderCode);
+            if (res.isPresent()) return res;
+        }
+        ConfigurableSandboxPaymentGateway csg = sandboxGateway.getIfAvailable();
+        if (csg != null) {
+            return csg.queryStatus(orderCode);
+        }
+        return Optional.empty();
     }
 }

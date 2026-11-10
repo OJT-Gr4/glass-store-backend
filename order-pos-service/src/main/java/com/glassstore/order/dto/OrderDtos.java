@@ -82,6 +82,7 @@ public final class OrderDtos {
         @Size(max = 120) private String paymentReference;
 
         private String notes;
+        private String paymentProvider;
 
         private Long posSessionId;
 

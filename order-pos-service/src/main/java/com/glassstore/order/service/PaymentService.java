@@ -50,6 +50,11 @@ public class PaymentService {
 
     @Transactional
     public PaymentGateway.InitiationResult initiate(Long orderId) {
+        return initiate(orderId, null);
+    }
+
+    @Transactional
+    public PaymentGateway.InitiationResult initiate(Long orderId, String requestedProvider) {
         Order order = orderRepository.lockById(orderId).orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND));
         if (paymentRepository.existsByOrderIdAndStatus(orderId, PaymentStatus.SUCCESS)) {
             throw ApiException.of(ErrorCode.PAYMENT_ALREADY_SETTLED,
@@ -68,11 +73,21 @@ public class PaymentService {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Gateway không hỗ trợ phương thức của đơn hàng.");
         }
 
+        String effectiveProvider = requestedProvider;
+        if (effectiveProvider == null || effectiveProvider.isBlank()) {
+            if (order.getNotes() != null && order.getNotes().toUpperCase().contains("SEPAY")) {
+                effectiveProvider = "SEPAY";
+            } else if (order.getNotes() != null && order.getNotes().toUpperCase().contains("VIETQR")) {
+                effectiveProvider = "VIETQR";
+            }
+        }
+
         PaymentGateway.InitiationResult result = paymentGateway.initiate(
                 new PaymentGateway.InitiationRequest(
                         order.getOrderCode(),
                         order.getFinalAmount(),
-                        "Thanh toán đơn " + order.getOrderCode()));
+                        "Thanh toán đơn " + order.getOrderCode(),
+                        effectiveProvider));
 
         Payment pending = paymentRepository.findByOrderIdOrderByCreatedAtDesc(orderId).stream()
                 .filter(p -> p.getStatus() == PaymentStatus.PENDING)

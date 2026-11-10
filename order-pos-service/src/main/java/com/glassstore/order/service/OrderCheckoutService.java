@@ -161,7 +161,7 @@ public class OrderCheckoutService {
                 .prescriptionId(request.getPrescriptionId())
                 .staffName(request.getStaffName())
                 .branchName(request.getBranchName())
-                .notes(request.getNotes())
+                .notes(effectiveNotes(request.getNotes(), request.getPaymentProvider()))
                 .posSessionId(request.getPosSessionId())
                 .invoiceNumber(channel == SalesChannel.POS ? "INV-" + orderCode : null)
                 .build();
@@ -636,5 +636,13 @@ public class OrderCheckoutService {
                 .map(OrderItem::getSubtotal)
                 .reduce(BasketPricingService.ZERO, BigDecimal::add);
         return sum.compareTo(order.getTotalAmount()) == 0;
+    }
+
+    private static String effectiveNotes(String notes, String provider) {
+        if (provider == null || provider.isBlank()) {
+            return notes;
+        }
+        String tag = "[PAYMENT_PROVIDER:" + provider.trim().toUpperCase() + "]";
+        return (notes != null && !notes.isBlank()) ? (notes + " " + tag) : tag;
     }
 }

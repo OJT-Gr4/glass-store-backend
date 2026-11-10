@@ -42,7 +42,10 @@ public interface PaymentGateway {
         return java.util.Optional.empty();
     }
 
-    record InitiationRequest(String orderCode, BigDecimal amount, String description) {
+    record InitiationRequest(String orderCode, BigDecimal amount, String description, String provider) {
+        public InitiationRequest(String orderCode, BigDecimal amount, String description) {
+            this(orderCode, amount, description, null);
+        }
     }
 
     record InitiationResult(String provider, String externalTransactionId, String paymentUrl,
