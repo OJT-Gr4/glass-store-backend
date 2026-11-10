@@ -35,6 +35,12 @@ public class PaymentController {
         return ResponseEntity.ok(ApiResponse.success("OK", paymentService.history(orderId)));
     }
 
+    @PostMapping("/order/{orderId}/sync")
+    public ResponseEntity<ApiResponse<List<Payment>>> sync(@PathVariable("orderId") Long orderId) {
+        requireOwner(orderId);
+        return ResponseEntity.ok(ApiResponse.success("OK", paymentService.history(orderId)));
+    }
+
     @PostMapping("/order/{orderId}/initiate")
     public ResponseEntity<ApiResponse<PaymentGateway.InitiationResult>> initiate(
             @PathVariable("orderId") Long orderId) {
