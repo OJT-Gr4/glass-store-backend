@@ -9,8 +9,10 @@ import com.glassstore.lab.dto.UpdateAppointmentStatusRequest;
 import com.glassstore.lab.entity.EyeExamAppointment;
 import com.glassstore.lab.repository.EyeExamAppointmentRepository;
 import com.glassstore.lab.repository.PrescriptionRepository;
+import com.glassstore.lab.service.LabNotificationPublisher;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,13 @@ public class EyeExamAppointmentController {
     private final PrescriptionRepository prescriptions;
     private final PrescriptionCustomerClient customers;
     private final CatalogLocationClient locations;
+
+    @Autowired(required = false)
+    private LabNotificationPublisher labNotificationPublisher;
+
+    public void setLabNotificationPublisher(LabNotificationPublisher labNotificationPublisher) {
+        this.labNotificationPublisher = labNotificationPublisher;
+    }
 
     @GetMapping("/location/{locationCode}/exists")
     public ResponseEntity<ApiResponse<Boolean>> hasAppointmentsForLocation(@PathVariable String locationCode) {
@@ -76,7 +85,9 @@ public class EyeExamAppointmentController {
                 .roomName(customer ? null : request.getRoomName())
                 .scheduledTime(scheduled.toString()).notes(request.getNotes())
                 .status("WAITING").statusLabel("Đang chờ").createdAt(LocalDateTime.now(BOOKING_ZONE)).build();
-        return ResponseEntity.ok(ApiResponse.success("Tạo lịch hẹn thành công", appointments.saveAndFlush(appointment)));
+        EyeExamAppointment saved = appointments.saveAndFlush(appointment);
+        publishAppointmentSafely(saved);
+        return ResponseEntity.ok(ApiResponse.success("Tạo lịch hẹn thành công", saved));
     }
 
     @PatchMapping("/{id}/status")
@@ -121,7 +132,20 @@ public class EyeExamAppointmentController {
         });
         if (request.getRoomName() != null) appointment.setRoomName(request.getRoomName());
         if (request.getExamStep() != null) appointment.setExamStep(request.getExamStep());
-        return ResponseEntity.ok(ApiResponse.success("Cập nhật lịch hẹn thành công", appointments.saveAndFlush(appointment)));
+        EyeExamAppointment saved = appointments.saveAndFlush(appointment);
+        publishAppointmentSafely(saved);
+        return ResponseEntity.ok(ApiResponse.success("Cập nhật lịch hẹn thành công", saved));
+    }
+
+    private void publishAppointmentSafely(EyeExamAppointment saved) {
+        if (labNotificationPublisher == null || saved == null) {
+            return;
+        }
+        try {
+            labNotificationPublisher.publishAppointmentEvent(saved);
+        } catch (Exception ignored) {
+            // Notification delivery must never roll back an eye-exam appointment update.
+        }
     }
 
     private EyeExamAppointment requireAppointment(Long id) {

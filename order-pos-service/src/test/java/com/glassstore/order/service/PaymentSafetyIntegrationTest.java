@@ -204,4 +204,23 @@ class PaymentSafetyIntegrationTest {
         assertEquals(PaymentStatus.REFUND_PENDING,payments.findByOrderId(paid.getId()).get(0).getStatus());
         assertEquals("RECONCILIATION_REQUIRED",tasks.findById(paid.getId()).orElseThrow().getStatus());
     }
+
+    @Test void posSepayGatewayFlowCreatesPendingAndSucceedsOnSettlement() {
+        var req = request("POS", "VIETQR");
+        req.setGatewayRequested(true);
+        var res = pos.createCounterSale(req, key(), "Bearer qa").getBody();
+        assertNotNull(res);
+        assertEquals(OrderStatus.PENDING_PAYMENT, res.getStatus());
+        var pendingPayment = payments.findByOrderId(res.getId()).get(0);
+        assertEquals(PaymentStatus.PENDING, pendingPayment.getStatus());
+        assertEquals("SEPAY", pendingPayment.getProvider());
+
+        // Cashier manually confirms or gateway settles POS order
+        online.settleCash(res.getId(), "cashier");
+        var updated = orders.findById(res.getId()).orElseThrow();
+        assertEquals(OrderStatus.PAID, updated.getStatus());
+        var paidPayment = payments.findByOrderId(res.getId()).get(0);
+        assertEquals(PaymentStatus.SUCCESS, paidPayment.getStatus());
+        assertEquals(1, stock.count());
+    }
 }

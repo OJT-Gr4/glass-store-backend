@@ -30,7 +30,6 @@ import java.util.*;
  * any fabrication of paid orders without valid provider integration (BR-16).</p>
  */
 @Component
-@Primary
 @Slf4j
 public class ConfigurableSandboxPaymentGateway implements PaymentGateway {
 

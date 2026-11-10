@@ -59,7 +59,8 @@ class OrderCheckoutServiceTest {
         when(idempotency.fingerprint(any(OrderDtos.CheckoutRequest.class))).thenReturn("hash");
         when(idempotency.begin(any(),any(),any())).thenAnswer(inv -> new com.glassstore.order.entity.CheckoutRequestRecord());
         service = new OrderCheckoutService(orderRepository, paymentRepository, pricingService,
-                orderStatusService, inventoryService, labClient, warrantyActivationService, labServiceClient,idempotency,mock(LabDispatchService.class));
+                orderStatusService, inventoryService, labClient, warrantyActivationService, labServiceClient, idempotency,
+                mock(LabDispatchService.class), mock(StockDeductionService.class), mock(PromotionService.class));
 
         when(orderRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
         when(orderRepository.findByOrderCode(any())).thenReturn(Optional.empty());

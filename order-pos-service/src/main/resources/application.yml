@@ -1,7 +1,31 @@
 server:
   port: ${ORDER_PORT:8083}
 
+payment:
+  provider: ${PAYMENT_PROVIDER:sepay}
+  sandbox:
+    enabled: ${PAYMENT_SANDBOX_ENABLED:true}
+    provider: ${PAYMENT_SANDBOX_PROVIDER:VIETQR}
+    secret-key: ${PAYMENT_SANDBOX_SECRET:GlassStoreSandboxSecretKey20261110!@#HMAC512}
+  vietqr:
+    bank-id: ${PAYMENT_VIETQR_BANK_ID:970422}
+    account-no: ${PAYMENT_VIETQR_ACCOUNT_NO:0987654321}
+    account-name: ${PAYMENT_VIETQR_ACCOUNT_NAME:OPTIVISION GLASS STORE}
+    template: ${PAYMENT_VIETQR_TEMPLATE:compact2}
+  vnpay:
+    tmn-code: ${PAYMENT_VNPAY_TMN_CODE:OPTIVIS1}
+    hash-secret: ${PAYMENT_VNPAY_HASH_SECRET:GlassStoreSandboxSecretKey20261110!@#HMAC512}
+    url: ${PAYMENT_VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+    return-url: ${PAYMENT_VNPAY_RETURN_URL:http://localhost:5173/payment-return}
+  sepay:
+    merchant-id: ${SEPAY_MERCHANT_ID:SP-LIVE-PH25A899}
+    secret-key: ${SEPAY_SECRET_KEY:spsk_live_nFh2X98U7y5kL4mP2vB6c1sW8zT3qR7v}
+    ipn-secret: ${SEPAY_IPN_SECRET:spsk_live_nFh2X98U7y5kL4mP2vB6c1sW8zT3qR7v}
+    return-base-url: ${SEPAY_RETURN_BASE_URL:http://localhost:5184}
+
 services:
+  identity-service:
+    url: ${IDENTITY_SERVICE_URL:http://127.0.0.1:${IDENTITY_PORT:8081}}
   catalog-service:
     url: ${CATALOG_SERVICE_URL:http://127.0.0.1:${CATALOG_PORT:8082}}
   eyewear-lab-service:
@@ -34,18 +58,3 @@ glassstore:
     seed:
       enabled: ${DEMO_SEED_ENABLED:false}
 
-payment:
-  sandbox:
-    enabled: ${PAYMENT_SANDBOX_ENABLED:true}
-    provider: ${PAYMENT_SANDBOX_PROVIDER:VIETQR}
-    secret-key: ${PAYMENT_SANDBOX_SECRET:GlassStoreSandboxSecretKey20261110!@#HMAC512}
-  vietqr:
-    bank-id: ${PAYMENT_VIETQR_BANK_ID:970422}
-    account-no: ${PAYMENT_VIETQR_ACCOUNT_NO:0987654321}
-    account-name: ${PAYMENT_VIETQR_ACCOUNT_NAME:OPTIVISION GLASS STORE}
-    template: ${PAYMENT_VIETQR_TEMPLATE:compact2}
-  vnpay:
-    tmn-code: ${PAYMENT_VNPAY_TMN_CODE:OPTIVIS1}
-    hash-secret: ${PAYMENT_VNPAY_HASH_SECRET:GlassStoreSandboxSecretKey20261110!@#HMAC512}
-    url: ${PAYMENT_VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
-    return-url: ${PAYMENT_VNPAY_RETURN_URL:http://localhost:5173/payment-return}

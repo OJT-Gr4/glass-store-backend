@@ -35,3 +35,13 @@ sms:
     api-key: ${SMS_PROVIDER_API_KEY:}
     sender: ${SMS_PROVIDER_SENDER:OptiVision}
 
+notification:
+  sms:
+    provider-url: ${NOTIFICATION_SMS_PROVIDER_URL:}
+    api-key: ${NOTIFICATION_SMS_PROVIDER_API_KEY:}
+    sender: ${NOTIFICATION_SMS_SENDER:OptiVision}
+  email:
+    provider-url: ${NOTIFICATION_EMAIL_PROVIDER_URL:}
+    api-key: ${NOTIFICATION_EMAIL_PROVIDER_API_KEY:}
+    from: ${NOTIFICATION_EMAIL_FROM:no-reply@optivision.vn}
+
