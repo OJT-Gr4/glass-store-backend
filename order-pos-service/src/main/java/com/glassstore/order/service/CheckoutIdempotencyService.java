@@ -91,6 +91,7 @@ public class CheckoutIdempotencyService {
                 .branchCode(order.getBranchCode()).branchName(order.getBranchName()).staffName(order.getStaffName())
                 .prescriptionId(order.getPrescriptionId()).pointsToUse(order.getPointsToUse()).voucherCode(order.getVoucherCode())
                 .cashReceived(order.getCashReceived()).manualPaymentConfirmed(order.isManualPaymentConfirmed())
+                .gatewayRequested(order.isGatewayRequested())
                 .paymentReference(order.getPaymentReference()).notes(order.getNotes()).posSessionId(order.getPosSessionId())
                 .items(order.getItems()==null?null:order.getItems().stream().map(item -> OrderDtos.CheckoutLine.builder()
                         .sku(item.getSkuId()).quantity(item.getQuantity()).productName(item.getProductName())

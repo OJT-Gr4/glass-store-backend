@@ -50,6 +50,7 @@ public class OrderService {
                 .staffName(request.getStaffName()).posSessionId(request.getPosSessionId()).notes(request.getNotes())
                 .voucherCode(request.getVoucherCode()).pointsToUse(request.getPointsToUse())
                 .cashReceived(request.getCashReceived()).manualPaymentConfirmed(request.isManualPaymentConfirmed())
+                .gatewayRequested(request.isGatewayRequested())
                 .paymentReference(request.getPaymentReference()).checkoutRequestHash(idempotency.fingerprint(request))
                 .items(new ArrayList<>()).build();
         for (OrderDtos.CheckoutLine line : request.getItems()) {
