@@ -1,5 +1,6 @@
 package com.glassstore.lab.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -75,12 +76,15 @@ public class Warranty {
     @Column(name = "policy_ref")
     private String policyRef;
 
+    @JsonIgnore
     @Column(name = "tech_note", length = 1000)
     private String techNote;
 
+    @JsonIgnore
     @Column(name = "cost")
     private String cost;
 
+    @JsonIgnore
     @Column(name = "tech_name")
     private String techName;
 
