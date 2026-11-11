@@ -72,8 +72,17 @@ public class InventoryService {
                                             ignored -> 0,
                                             (left, right) -> left,
                                             LinkedHashMap::new)))
+                            .sellableQuantities(locations.stream()
+                                    .collect(Collectors.toMap(
+                                            InventoryLocation::getCode,
+                                            ignored -> 0,
+                                            (left, right) -> left,
+                                            LinkedHashMap::new)))
                             .build());
             row.getQuantities().put(balance.getLocation().getCode(), balance.getQuantity());
+            row.getSellableQuantities().put(
+                    balance.getLocation().getCode(),
+                    Math.min(balance.getSellableQuantity(), variant.getAvailableQuantity()));
         }
         return new ArrayList<>(rows.values());
     }
@@ -171,9 +180,8 @@ public class InventoryService {
     public StockTransferDTO receiveTransfer(Long id, String actor) {
         StockTransfer transfer = transferRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiếu điều chuyển."));
-        if (transfer.getStatus() != StockTransferStatus.PENDING
-                && transfer.getStatus() != StockTransferStatus.IN_TRANSIT) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ phiếu chờ nhận mới được xác nhận nhận hàng.");
+        if (transfer.getStatus() != StockTransferStatus.IN_TRANSIT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ phiếu đang vận chuyển mới được xác nhận nhận hàng.");
         }
         if (!transfer.getSourceLocation().isActive() || !transfer.getDestinationLocation().isActive()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Kho nguồn hoặc kho đích không còn hoạt động.");
@@ -182,11 +190,9 @@ public class InventoryService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Phiếu điều chuyển không có SKU hợp lệ.");
         }
 
-        StockTransferStatus previousStatus = transfer.getStatus();
-        boolean pendingTransfer = previousStatus == StockTransferStatus.PENDING;
         LocalDateTime receivedAt = LocalDateTime.now();
         if (transferRepository.transitionToReceived(
-                id, previousStatus, StockTransferStatus.RECEIVED, receivedAt, actor) != 1) {
+                id, StockTransferStatus.IN_TRANSIT, StockTransferStatus.RECEIVED, receivedAt, actor) != 1) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Phiếu điều chuyển đã được xử lý.");
         }
         for (StockTransferItem item : sortedItems(transfer.getItems())) {
@@ -201,26 +207,12 @@ public class InventoryService {
                         HttpStatus.CONFLICT, "SKU " + item.getSku() + " chưa có số liệu tồn tại kho đích.");
             }
 
-            if (pendingTransfer) {
-                int sourceUpdated = balanceRepository.decrementIfAvailable(
-                        item.getSku(), sourceCode, item.getQuantity());
-                if (sourceUpdated != 1) {
-                    throw new ResponseStatusException(
-                            HttpStatus.CONFLICT, "Không đủ tồn kho nguồn cho SKU " + item.getSku() + ".");
-                }
-                movementRepository.save(transferMovement(
-                        "TRANSFER_OUT", item, transfer, actor, sourceCode, destinationCode));
-            }
-
             int destinationUpdated = balanceRepository.increment(
                     item.getSku(), destinationCode, item.getQuantity());
-            if (destinationUpdated != 1) {
+            int variantUpdated = variantRepository.incrementStock(item.getSku(), item.getQuantity());
+            if (destinationUpdated != 1 || variantUpdated != 1) {
                 throw new ResponseStatusException(
-                        HttpStatus.CONFLICT, "Không thể cập nhật tồn kho đích cho SKU " + item.getSku() + ".");
-            }
-            if (!pendingTransfer && variantRepository.incrementStock(item.getSku(), item.getQuantity()) != 1) {
-                throw new ResponseStatusException(
-                        HttpStatus.CONFLICT, "Không thể đồng bộ tồn tổng cho SKU " + item.getSku() + ".");
+                        HttpStatus.CONFLICT, "Không thể cập nhật tồn kho nhận cho SKU " + item.getSku() + ".");
             }
             movementRepository.save(transferMovement(
                     "TRANSFER_IN", item, transfer, actor, sourceCode, destinationCode));
@@ -229,6 +221,72 @@ public class InventoryService {
         transfer.setStatus(StockTransferStatus.RECEIVED);
         transfer.setReceivedAt(receivedAt);
         transfer.setReceivedBy(actor);
+        return toTransferDto(transfer);
+    }
+
+    @Transactional
+    public StockTransferDTO dispatchTransfer(Long id, String actor) {
+        StockTransfer transfer = transferRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiếu điều chuyển."));
+        if (transfer.getStatus() != StockTransferStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ phiếu PENDING mới được xuất kho.");
+        }
+        if (!transfer.getSourceLocation().isActive() || !transfer.getDestinationLocation().isActive()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Kho nguồn hoặc kho đích không còn hoạt động.");
+        }
+        if (transfer.getItems() == null || transfer.getItems().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Phiếu điều chuyển không có SKU hợp lệ.");
+        }
+
+        List<StockTransferItem> items = sortedItems(transfer.getItems());
+        List<String> skus = items.stream().map(StockTransferItem::getSku).toList();
+        Map<String, ProductVariant> variants = variantRepository.findAllBySkuInForUpdate(skus).stream()
+                .collect(Collectors.toMap(ProductVariant::getSku, variant -> variant));
+        for (StockTransferItem item : items) {
+            if (item.getSku() == null || item.getSku().isBlank()
+                    || item.getQuantity() == null || item.getQuantity() <= 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Phiếu điều chuyển chứa SKU hoặc số lượng không hợp lệ.");
+            }
+            if (!variants.containsKey(item.getSku())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Không tìm thấy SKU " + item.getSku() + ".");
+            }
+            InventoryBalance sourceBalance = balanceRepository.findBySkuAndLocationCodeForUpdate(
+                            item.getSku(), transfer.getSourceLocation().getCode())
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.CONFLICT, "SKU " + item.getSku() + " chưa có số liệu tồn tại kho nguồn."));
+            if (balanceRepository.findBySkuAndLocationCode(
+                    item.getSku(), transfer.getDestinationLocation().getCode()).isEmpty()) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT, "SKU " + item.getSku() + " chưa có số liệu tồn tại kho đích.");
+            }
+            if (sourceBalance.getSellableQuantity() < item.getQuantity()
+                    || variants.get(item.getSku()).getAvailableQuantity() < item.getQuantity()) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT, "Không đủ tồn bán được tại kho nguồn cho SKU " + item.getSku() + ".");
+            }
+        }
+
+        LocalDateTime dispatchedAt = LocalDateTime.now();
+        if (transferRepository.transitionToInTransit(
+                id, StockTransferStatus.PENDING, StockTransferStatus.IN_TRANSIT, dispatchedAt, actor) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Phiếu điều chuyển đã được xử lý.");
+        }
+        String sourceCode = transfer.getSourceLocation().getCode();
+        String destinationCode = transfer.getDestinationLocation().getCode();
+        for (StockTransferItem item : items) {
+            if (balanceRepository.decrementIfAvailable(
+                    item.getSku(), sourceCode, item.getQuantity()) != 1
+                    || variantRepository.decrementStockIfAvailable(
+                    item.getSku(), item.getQuantity()) != 1) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT, "Không đủ tồn bán được tại kho nguồn cho SKU " + item.getSku() + ".");
+            }
+            movementRepository.save(transferMovement(
+                    "TRANSFER_OUT", item, transfer, actor, sourceCode, destinationCode));
+        }
+        transfer.setStatus(StockTransferStatus.IN_TRANSIT);
+        transfer.setDispatchedAt(dispatchedAt);
+        transfer.setDispatchedBy(actor);
         return toTransferDto(transfer);
     }
 
@@ -319,6 +377,7 @@ public class InventoryService {
                 .reason(transfer.getReason())
                 .status(transfer.getStatus().name())
                 .createdBy(transfer.getCreatedBy())
+                .dispatchedBy(transfer.getDispatchedBy())
                 .receivedBy(transfer.getReceivedBy())
                 .createdAt(transfer.getCreatedAt())
                 .dispatchedAt(transfer.getDispatchedAt())

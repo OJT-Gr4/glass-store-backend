@@ -27,6 +27,7 @@ import java.util.concurrent.Future;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
@@ -43,6 +44,8 @@ class StockTransferIntegrationTest {
 
     @Autowired
     private InventoryService inventoryService;
+    @Autowired
+    private InventoryReconciliationService reconciliationService;
     @Autowired
     private InventoryLocationRepository locationRepository;
     @Autowired
@@ -65,7 +68,7 @@ class StockTransferIntegrationTest {
     private MockMvc mockMvc;
 
     @Test
-    void createsPendingTransferWithoutChangingStockAndReceivesBothDirectionsOnce() {
+    void dispatchesAndReceivesBothDirectionsWithoutChangingTotalStock() {
         TestStock stock = createStock(20, 5);
         StockTransferDTO pending = inventoryService.createTransfer(
                 request(stock.sku(), InventoryService.LAB, InventoryService.BRANCH_01, 3), "lab.operator");
@@ -74,6 +77,18 @@ class StockTransferIntegrationTest {
         assertEquals("lab.operator", pending.getCreatedBy());
         assertBalances(stock.sku(), 20, 5);
         assertEquals(0, movementsFor(pending.getTransferCode()).size());
+
+        assertStatus(HttpStatus.CONFLICT,
+                () -> inventoryService.receiveTransfer(pending.getId(), "admin.operator"));
+
+        StockTransferDTO dispatched = inventoryService.dispatchTransfer(pending.getId(), "lab.operator");
+        assertEquals("IN_TRANSIT", dispatched.getStatus());
+        assertEquals("lab.operator", dispatched.getDispatchedBy());
+        assertBalances(stock.sku(), 17, 5);
+        assertEquals(22, variantRepository.findBySku(stock.sku()).orElseThrow().getStockQuantity());
+        assertEquals(1, movementsFor(pending.getTransferCode()).size());
+        assertStatus(HttpStatus.CONFLICT,
+                () -> inventoryService.dispatchTransfer(pending.getId(), "lab.operator"));
 
         StockTransferDTO received = inventoryService.receiveTransfer(pending.getId(), "admin.operator");
         assertEquals("RECEIVED", received.getStatus());
@@ -84,14 +99,20 @@ class StockTransferIntegrationTest {
         assertThrows(ResponseStatusException.class,
                 () -> inventoryService.receiveTransfer(pending.getId(), "admin.operator"));
         assertBalances(stock.sku(), 17, 8);
+        assertEquals(25, variantRepository.findBySku(stock.sku()).orElseThrow().getStockQuantity());
         assertEquals(2, movementsFor(pending.getTransferCode()).size());
 
         StockTransferDTO reversePending = inventoryService.createTransfer(
                 request(stock.sku(), InventoryService.BRANCH_01, InventoryService.LAB, 2), "admin.operator");
         assertBalances(stock.sku(), 17, 8);
+        inventoryService.dispatchTransfer(reversePending.getId(), "admin.operator");
+        assertBalances(stock.sku(), 17, 6);
+        assertEquals(23, variantRepository.findBySku(stock.sku()).orElseThrow().getStockQuantity());
         inventoryService.receiveTransfer(reversePending.getId(), "lab.operator");
         assertBalances(stock.sku(), 19, 6);
         assertEquals(25, variantRepository.findBySku(stock.sku()).orElseThrow().getStockQuantity());
+        assertTrue(reconciliationService.reconcile().getBalanceVariances().stream()
+                .noneMatch(variance -> variance.getSku().equals(stock.sku())));
     }
 
     @Test
@@ -117,7 +138,85 @@ class StockTransferIntegrationTest {
     }
 
     @Test
-    void insufficientStockAtReceiptRollsBackEverySkuAndKeepsTransferPending() {
+    void transferRoutesSeparateDispatchAndReceiptAndRequireWarehouseRoles() throws Exception {
+        TestStock stock = createStock(8, 0);
+        StockTransferDTO transfer = inventoryService.createTransfer(
+                request(stock.sku(), InventoryService.LAB, InventoryService.BRANCH_01, 2), "lab.operator");
+
+        mockMvc.perform(patch("/api/inventory/transfers/{id}/dispatch", transfer.getId())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_SALES_STAFF"))))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(patch("/api/inventory/transfers/{id}/dispatch", transfer.getId())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.status")
+                        .value("IN_TRANSIT"));
+        mockMvc.perform(patch("/api/inventory/transfers/{id}/receive", transfer.getId())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_LAB"))))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.status")
+                        .value("RECEIVED"));
+    }
+
+    @Test
+    void inventoryResponseIncludesSellableQuantityAfterQuarantine() {
+        TestStock stock = createStock(10, 5);
+        InventoryBalance labBalance = balanceRepository.findBySkuAndLocationCode(
+                stock.sku(), InventoryService.LAB).orElseThrow();
+        labBalance.setQuarantinedQuantity(3);
+        balanceRepository.save(labBalance);
+
+        var row = inventoryService.getInventory().stream()
+                .filter(item -> item.getSku().equals(stock.sku()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(10, row.getQuantities().get(InventoryService.LAB));
+        assertEquals(7, row.getSellableQuantities().get(InventoryService.LAB));
+    }
+
+    @Test
+    void reconciliationDetectsBalanceAndUnexpectedTransferMovementsWithoutRepairingStock() {
+        TestStock stock = createStock(8, 4);
+        StockTransferDTO transfer = inventoryService.createTransfer(
+                request(stock.sku(), InventoryService.LAB, InventoryService.BRANCH_01, 2), "lab.operator");
+        inventoryService.dispatchTransfer(transfer.getId(), "lab.operator");
+
+        var cleanReport = reconciliationService.reconcile();
+        assertFalse(cleanReport.getBalanceVariances().stream()
+                .anyMatch(variance -> variance.getSku().equals(stock.sku())));
+        assertFalse(cleanReport.getTransferVariances().stream()
+                .anyMatch(variance -> variance.getTransferCode().equals(transfer.getTransferCode())));
+        assertFalse(cleanReport.isCompleteMovementLedger());
+
+        InventoryBalance branchBalance = balanceRepository.findBySkuAndLocationCode(
+                stock.sku(), InventoryService.BRANCH_01).orElseThrow();
+        branchBalance.setQuantity(branchBalance.getQuantity() - 1);
+        balanceRepository.save(branchBalance);
+        movementRepository.save(InventoryMovement.builder()
+                .movementType("TRANSFER_OUT")
+                .sku("UNLISTED-" + stock.sku())
+                .sourceLocationCode(InventoryService.LAB)
+                .destinationLocationCode(InventoryService.BRANCH_01)
+                .referenceType("STOCK_TRANSFER")
+                .referenceId(transfer.getTransferCode())
+                .quantity(1)
+                .performedBy("test")
+                .build());
+
+        var report = reconciliationService.reconcile();
+        assertTrue(report.getBalanceVariances().stream()
+                .anyMatch(variance -> variance.getSku().equals(stock.sku()) && variance.getDifference() == 1));
+        assertTrue(report.getTransferVariances().stream()
+                .anyMatch(variance -> variance.getSku().equals("UNLISTED-" + stock.sku())));
+        assertEquals(6, balanceRepository.findBySkuAndLocationCode(
+                stock.sku(), InventoryService.LAB).orElseThrow().getQuantity());
+        assertEquals(3, balanceRepository.findBySkuAndLocationCode(
+                stock.sku(), InventoryService.BRANCH_01).orElseThrow().getQuantity());
+        assertEquals(10, variantRepository.findBySku(stock.sku()).orElseThrow().getStockQuantity());
+    }
+
+    @Test
+    void insufficientStockAtDispatchRollsBackEverySkuAndKeepsTransferPending() {
         TestStock first = createStock(10, 0);
         TestStock second = createStock(10, 0);
         CreateStockTransferRequest request = request(first.sku(), InventoryService.LAB, InventoryService.BRANCH_01, 2);
@@ -126,15 +225,33 @@ class StockTransferIntegrationTest {
 
         InventoryBalance secondSource = balanceRepository.findBySkuAndLocationCode(
                 second.sku(), InventoryService.LAB).orElseThrow();
-        secondSource.setQuantity(1);
+        secondSource.setQuarantinedQuantity(10);
         balanceRepository.save(secondSource);
 
         assertStatus(HttpStatus.CONFLICT,
-                () -> inventoryService.receiveTransfer(transfer.getId(), "admin.operator"));
+                () -> inventoryService.dispatchTransfer(transfer.getId(), "admin.operator"));
         assertBalances(first.sku(), 10, 0);
-        assertBalances(second.sku(), 1, 0);
+        assertBalances(second.sku(), 10, 0);
+        assertEquals(10, variantRepository.findBySku(first.sku()).orElseThrow().getStockQuantity());
+        assertEquals(10, variantRepository.findBySku(second.sku()).orElseThrow().getStockQuantity());
         assertTrue(movementsFor(transfer.getTransferCode()).isEmpty());
         assertEquals("PENDING", transferRepository.findById(transfer.getId()).orElseThrow().getStatus().name());
+
+        secondSource.setQuarantinedQuantity(0);
+        balanceRepository.save(secondSource);
+        assertEquals("IN_TRANSIT", inventoryService.dispatchTransfer(
+                transfer.getId(), "admin.operator").getStatus());
+        assertBalances(first.sku(), 8, 0);
+        assertBalances(second.sku(), 8, 0);
+        assertEquals(8, variantRepository.findBySku(first.sku()).orElseThrow().getStockQuantity());
+        assertEquals(8, variantRepository.findBySku(second.sku()).orElseThrow().getStockQuantity());
+        assertEquals(2, movementsFor(transfer.getTransferCode()).size());
+        inventoryService.receiveTransfer(transfer.getId(), "branch.operator");
+        assertBalances(first.sku(), 8, 2);
+        assertBalances(second.sku(), 8, 2);
+        assertEquals(10, variantRepository.findBySku(first.sku()).orElseThrow().getStockQuantity());
+        assertEquals(10, variantRepository.findBySku(second.sku()).orElseThrow().getStockQuantity());
+        assertEquals(4, movementsFor(transfer.getTransferCode()).size());
     }
 
     @Test
@@ -142,6 +259,7 @@ class StockTransferIntegrationTest {
         TestStock stock = createStock(10, 0);
         StockTransferDTO transfer = inventoryService.createTransfer(
                 request(stock.sku(), InventoryService.LAB, InventoryService.BRANCH_01, 4), "lab.operator");
+        inventoryService.dispatchTransfer(transfer.getId(), "lab.operator");
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
@@ -154,7 +272,29 @@ class StockTransferIntegrationTest {
         }
 
         assertBalances(stock.sku(), 6, 4);
+        assertEquals(10, variantRepository.findBySku(stock.sku()).orElseThrow().getStockQuantity());
         assertEquals(2, movementsFor(transfer.getTransferCode()).size());
+    }
+
+    @Test
+    void concurrentDispatchRequestsDeductAndRecordSourceOnlyOnce() throws Exception {
+        TestStock stock = createStock(10, 0);
+        StockTransferDTO transfer = inventoryService.createTransfer(
+                request(stock.sku(), InventoryService.LAB, InventoryService.BRANCH_01, 4), "lab.operator");
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> first = executor.submit(() -> dispatchAfter(start, transfer.getId()));
+            Future<Boolean> second = executor.submit(() -> dispatchAfter(start, transfer.getId()));
+            start.countDown();
+            assertEquals(1, (int) List.of(first.get(), second.get()).stream().filter(Boolean::booleanValue).count());
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertBalances(stock.sku(), 6, 0);
+        assertEquals(6, variantRepository.findBySku(stock.sku()).orElseThrow().getStockQuantity());
+        assertEquals(1, movementsFor(transfer.getTransferCode()).size());
     }
 
     @Test
@@ -196,6 +336,12 @@ class StockTransferIntegrationTest {
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/inventory")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_SALES_STAFF"))))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/inventory/reconciliation")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_LAB"))))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/inventory/reconciliation")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
                 .andExpect(status().isOk());
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/inventory/transfers")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_SALES_STAFF"))))
@@ -360,6 +506,17 @@ class StockTransferIntegrationTest {
         start.await();
         try {
             inventoryService.receiveTransfer(transferId, "admin.operator");
+            return true;
+        } catch (ResponseStatusException exception) {
+            assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+            return false;
+        }
+    }
+
+    private boolean dispatchAfter(CountDownLatch start, Long transferId) throws Exception {
+        start.await();
+        try {
+            inventoryService.dispatchTransfer(transferId, "admin.operator");
             return true;
         } catch (ResponseStatusException exception) {
             assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());

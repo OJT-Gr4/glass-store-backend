@@ -3,6 +3,7 @@ package com.glassstore.catalog.controller;
 import com.glassstore.catalog.dto.CreateStockTransferRequest;
 import com.glassstore.catalog.dto.InventoryLocationDTO;
 import com.glassstore.catalog.dto.InventoryMovementDTO;
+import com.glassstore.catalog.dto.InventoryReconciliationDTO;
 import com.glassstore.catalog.dto.InventoryRowDTO;
 import com.glassstore.catalog.dto.StockDeductionRequest;
 import com.glassstore.catalog.dto.StockDeductionResponse;
@@ -11,6 +12,7 @@ import com.glassstore.catalog.dto.StockDtos;
 import com.glassstore.catalog.dto.StockCheckRequest;
 import com.glassstore.catalog.dto.VariantInfoDTO;
 import com.glassstore.catalog.service.InventoryQueryService;
+import com.glassstore.catalog.service.InventoryReconciliationService;
 import com.glassstore.catalog.service.InventoryService;
 import com.glassstore.catalog.service.StockService;
 import com.glassstore.common.dto.ApiResponse;
@@ -52,6 +54,7 @@ public class InventoryController {
     private final InventoryQueryService queryService;
     private final StockService stockService;
     private final InventoryService inventoryService;
+    private final InventoryReconciliationService reconciliationService;
 
     @GetMapping("/api/variants/sku/{sku}")
     public ResponseEntity<ApiResponse<VariantInfoDTO>> getBySku(@PathVariable("sku") String sku) {
@@ -99,6 +102,12 @@ public class InventoryController {
         return ResponseEntity.ok(ApiResponse.success("Lấy tồn kho theo địa điểm thành công", inventoryService.getInventory()));
     }
 
+    @GetMapping("/api/inventory/reconciliation")
+    public ResponseEntity<ApiResponse<InventoryReconciliationDTO>> reconcileInventory() {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Đối soát tồn kho hoàn tất", reconciliationService.reconcile()));
+    }
+
     @GetMapping("/api/inventory/locations")
     public ResponseEntity<ApiResponse<List<InventoryLocationDTO>>> getLocations() {
         return ResponseEntity.ok(ApiResponse.success("Lấy danh sách kho thành công", inventoryService.getLocations()));
@@ -127,6 +136,14 @@ public class InventoryController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Tạo phiếu điều chuyển thành công",
                         inventoryService.createTransfer(request, actorFrom(principal))));
+    }
+
+    @PatchMapping("/api/inventory/transfers/{id}/dispatch")
+    public ResponseEntity<ApiResponse<StockTransferDTO>> dispatchTransfer(
+            @PathVariable("id") Long id,
+            @AuthenticationPrincipal Jwt principal) {
+        return ResponseEntity.ok(ApiResponse.success("Xuất kho điều chuyển thành công",
+                inventoryService.dispatchTransfer(id, actorFrom(principal))));
     }
 
     @PatchMapping("/api/inventory/transfers/{id}/receive")

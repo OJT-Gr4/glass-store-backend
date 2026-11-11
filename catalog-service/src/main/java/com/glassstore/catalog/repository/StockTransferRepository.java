@@ -29,6 +29,21 @@ public interface StockTransferRepository extends JpaRepository<StockTransfer, Lo
     @Query("""
             update StockTransfer transfer
             set transfer.status = :newStatus,
+                transfer.dispatchedAt = :dispatchedAt,
+                transfer.dispatchedBy = :dispatchedBy
+            where transfer.id = :id and transfer.status = :expectedStatus
+            """)
+    int transitionToInTransit(
+            @Param("id") Long id,
+            @Param("expectedStatus") StockTransferStatus expectedStatus,
+            @Param("newStatus") StockTransferStatus newStatus,
+            @Param("dispatchedAt") LocalDateTime dispatchedAt,
+            @Param("dispatchedBy") String dispatchedBy);
+
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            update StockTransfer transfer
+            set transfer.status = :newStatus,
                 transfer.receivedAt = :receivedAt,
                 transfer.receivedBy = :receivedBy
             where transfer.id = :id and transfer.status = :expectedStatus

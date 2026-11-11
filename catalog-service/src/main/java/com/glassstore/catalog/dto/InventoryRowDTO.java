@@ -12,4 +12,5 @@ public class InventoryRowDTO {
     private String productName;
     private String productType;
     private Map<String, Integer> quantities;
+    private Map<String, Integer> sellableQuantities;
 }

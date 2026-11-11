@@ -136,6 +136,10 @@ Verified baseline:
 
 Opening stock: BRANCH_01 has 105 units, BRANCH_02 has 105 units and LAB has 1330 units. Each SKU receives up to 5 units per branch, respecting its total quantity. Catalog startup creates only missing structural locations/balances and preserves existing balances; a restart does not refill sold stock.
 
+Stock transfers use `PENDING -> IN_TRANSIT -> RECEIVED`: creating a draft does not change stock, dispatch deducts sellable stock at the source once, and receipt credits the destination. The admin-only `GET /api/inventory/reconciliation` endpoint compares variant totals with location balances and transfer states with their movement records. It is read-only and explicitly does not reconstruct the complete movement ledger because opening balances are seeded directly. Order inventory outbox state remains available on the order details/retry flow.
+
+The additive `docker/mysql/migrations/20261110-glas-27-transfer-dispatch.sql` migration adds the dispatch actor column when the transfer table already exists. `setup-db.ps1` applies it for native or Docker database setup without resetting data; if the table has not been created yet, Hibernate's configured schema update creates it from the entity mapping.
+
 Sample users for this SQL dataset all use password 123456, stored as a verified BCrypt hash:
 
 | Login | Email | Role |

@@ -22,6 +22,9 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     boolean existsByBarcodeAndIdNot(String barcode, Long id);
     List<ProductVariant> findByProductId(Long productId);
 
+    @Query("SELECT v FROM ProductVariant v JOIN FETCH v.product ORDER BY v.sku")
+    List<ProductVariant> findAllWithProduct();
+
     /**
      * Loads variants for a stock mutation with a row-level write lock, so concurrent
      * checkouts for the same SKU are serialised instead of overselling (EX-INV-05, BR-09).
@@ -36,7 +39,8 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
             update ProductVariant v
             set v.stockQuantity = v.stockQuantity - :quantity,
                 v.updatedAt = CURRENT_TIMESTAMP
-            where v.sku = :sku and v.stockQuantity >= :quantity
+            where v.sku = :sku
+              and v.stockQuantity - v.reservedQuantity - v.nonSellableQuantity >= :quantity
             """)
     int decrementStockIfAvailable(@Param("sku") String sku, @Param("quantity") int quantity);
 
