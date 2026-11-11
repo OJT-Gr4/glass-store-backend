@@ -42,7 +42,7 @@ spring:
         - id: order-pos-service
           uri: ${ORDER_POS_SERVICE_URL:http://127.0.0.1:${ORDER_PORT:8083}}
           predicates:
-            - Path=/api/orders/**, /api/orders, /api/pos/**, /api/cart/**, /api/payments/**, /api/vouchers/**, /api/promotions/**, /api/loyalty/**
+            - Path=/api/orders/**, /api/orders, /api/pos/**, /api/cart/**, /api/payments/**, /api/vouchers/**, /api/promotions/**, /api/loyalty/**, /bank/api/**, /api/vietqr/**, /api/token_generate
 
         # Route 4: eyewear-lab-service (Port 8084)
         - id: eyewear-lab-service

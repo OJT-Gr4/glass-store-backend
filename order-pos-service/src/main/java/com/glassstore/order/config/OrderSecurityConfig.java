@@ -2,6 +2,7 @@ package com.glassstore.order.config;
 
 import com.glassstore.common.security.ServiceJwtConfiguration;
 import org.springframework.context.annotation.*;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -9,9 +10,25 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
-@Configuration @Import(ServiceJwtConfiguration.class)
+@Configuration
+@Import(ServiceJwtConfiguration.class)
 public class OrderSecurityConfig {
-    @Bean SecurityFilterChain orderSecurity(HttpSecurity http, JwtAuthenticationConverter converter) throws Exception {
+
+    @Bean
+    @Order(1)
+    SecurityFilterChain vietQrCallbackSecurity(HttpSecurity http) throws Exception {
+        return http
+            .securityMatcher("/bank/api/**", "/api/vietqr/**", "/api/token_generate", "/api/payments/vietqr/**")
+            .csrf(AbstractHttpConfigurer::disable)
+            .cors(cors -> {})
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(a -> a.anyRequest().permitAll())
+            .build();
+    }
+
+    @Bean
+    @Order(2)
+    SecurityFilterChain orderSecurity(HttpSecurity http, JwtAuthenticationConverter converter) throws Exception {
         return http.csrf(AbstractHttpConfigurer::disable).cors(cors -> {})
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(a -> a
