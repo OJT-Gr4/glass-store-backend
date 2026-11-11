@@ -93,12 +93,6 @@ public class OrderCheckoutService {
                 idempotency, labDispatchService, null, null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private StockDeductionService stockDeductionService;
-
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private PromotionService promotionService;
-
     @Transactional
     public CheckoutOutcome checkout(OrderDtos.CheckoutRequest request, String idempotencyKey) {
         String key = requireIdempotencyKey(idempotencyKey);
