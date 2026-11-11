@@ -17,11 +17,12 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:benefits;MODE=MySQL;DB_CLOSE_DELAY=-1","spring.datasource.driver-class-name=org.h2.Driver","spring.datasource.username=sa","spring.datasource.password=","spring.jpa.hibernate.ddl-auto=create-drop","spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect","inventory.outbox.poll-interval-ms=3600000"})
+@SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:benefits;MODE=MySQL;DB_CLOSE_DELAY=-1","spring.datasource.driver-class-name=org.h2.Driver","spring.datasource.username=sa","spring.datasource.password=","spring.jpa.hibernate.ddl-auto=create-drop","spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect","inventory.outbox.poll-interval-ms=3600000","pos.loyalty.earn-enabled=false"})
 @Transactional
 class PosBenefitsIntegrationTest {
     @Autowired OrderService orders;
     @Autowired PromotionService promotions;
+    @Autowired LoyaltyPolicy loyaltyPolicy;
     @Autowired OrderCancellationService cancellations;
     @Autowired VoucherRepository vouchers;
     @Autowired LoyaltyAccountRepository accounts;
@@ -146,5 +147,23 @@ class PosBenefitsIntegrationTest {
         Order saved = orders.create(valid,"server-totals","Bearer test").getBody();
         assertEquals(0, saved.getFinalAmount().compareTo(new BigDecimal("1080000")));
         assertEquals("Catalog lens",saved.getItems().get(0).getProductName());
+    }
+
+    @Test void earnsVipLoyaltyPointsOnPaidOrderAndReversesOnCancel() {
+        loyaltyPolicy.setEarnEnabled(true);
+        try {
+            Order request = order();
+            request.setCashReceived(new BigDecimal("2000000"));
+            Order saved = orders.create(request, "QA-earn-points", "Bearer test").getBody();
+            // 1,000,000 + 8% VAT = 1,080,000 VND -> 1,080 points earned (1,000 VND = 1 point). Initial 100 + 1080 = 1180
+            assertEquals(1180L, accounts.findById(10L).orElseThrow().getBalance());
+            assertEquals("VIP Silver", loyaltyPolicy.resolveTier(1180L));
+
+            cancellations.cancel(saved.getId(), new OrderCancellationService.Request("Hủy đơn thu hồi điểm", false), "Bearer test");
+            cancellations.complete(saved.getId());
+            assertEquals(100L, accounts.findById(10L).orElseThrow().getBalance());
+        } finally {
+            loyaltyPolicy.setEarnEnabled(false);
+        }
     }
 }

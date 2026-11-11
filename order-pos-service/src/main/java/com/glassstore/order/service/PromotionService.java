@@ -109,16 +109,45 @@ public class PromotionService {
     }
 
     public void consume(Order order) {
-        if (order.getVoucherCode() != null) {
+        if (order.getVoucherCode() != null && redemptions.findByOrderId(order.getId()).isEmpty()) {
             Voucher voucher = vouchers.lockByCode(order.getVoucherCode()).orElseThrow();
             voucher.setUsedCount(voucher.getUsedCount()+1); vouchers.save(voucher);
             VoucherRedemption redemption = new VoucherRedemption(); redemption.setVoucherId(voucher.getId()); redemption.setCustomerId(order.getCustomerId()); redemption.setOrderId(order.getId()); redemptions.save(redemption);
         }
-        if (order.getRedeemedPoints() != null && order.getRedeemedPoints() > 0) {
+        if (order.getRedeemedPoints() != null && order.getRedeemedPoints() > 0
+                && entries.findByOrderIdAndEntryType(order.getId(), "REDEEM").isEmpty()) {
             LoyaltyAccount account = accounts.lockByCustomerId(order.getCustomerId()).orElseThrow();
             account.setBalance(account.getBalance()-order.getRedeemedPoints()); accounts.save(account);
             LoyaltyEntry entry = new LoyaltyEntry(); entry.setCustomerId(order.getCustomerId()); entry.setOrderId(order.getId()); entry.setEntryType("REDEEM"); entry.setPoints(-order.getRedeemedPoints()); entry.setReason("POS checkout"); entries.save(entry);
         }
+        earnPoints(order);
+    }
+
+    public void earnPoints(Order order) {
+        if (order == null || order.getId() == null || order.getCustomerId() == null) return;
+        if (!policy.isEnabled() || !policy.isEarnEnabled()) return;
+        if (order.getFinalAmount() == null || policy.getEarnUnitAmount() == null || policy.getEarnUnitAmount().signum() <= 0) return;
+
+        long earned = order.getFinalAmount().divide(policy.getEarnUnitAmount(), 0, RoundingMode.DOWN).longValue();
+        if (earned <= 0) return;
+        if (entries.findByOrderIdAndEntryType(order.getId(), "EARN").isPresent()) return;
+
+        LoyaltyAccount account = accounts.lockByCustomerId(order.getCustomerId()).orElseGet(() -> {
+            LoyaltyAccount created = new LoyaltyAccount();
+            created.setCustomerId(order.getCustomerId());
+            created.setBalance(0L);
+            return accounts.saveAndFlush(created);
+        });
+        account.setBalance(Math.addExact(account.getBalance(), earned));
+        accounts.save(account);
+
+        LoyaltyEntry entry = new LoyaltyEntry();
+        entry.setCustomerId(order.getCustomerId());
+        entry.setOrderId(order.getId());
+        entry.setEntryType("EARN");
+        entry.setPoints(earned);
+        entry.setReason("Tích điểm đơn hàng " + (order.getOrderCode() != null ? order.getOrderCode() : order.getId()));
+        entries.save(entry);
     }
 
     public void reverse(Order order) {
@@ -126,9 +155,25 @@ public class PromotionService {
         if (order.getVoucherCode() != null) redemptions.findByOrderId(order.getId()).filter(r -> !r.isReversed()).ifPresent(redemption -> {
             Voucher voucher = vouchers.lockByCode(order.getVoucherCode()).orElseThrow(); voucher.setUsedCount(Math.max(0,voucher.getUsedCount()-1)); vouchers.save(voucher); redemption.setReversed(true); redemptions.save(redemption);
         });
-        if (order.getRedeemedPoints() != null && order.getRedeemedPoints() > 0) {
+        if (order.getRedeemedPoints() != null && order.getRedeemedPoints() > 0
+                && entries.findByOrderIdAndEntryType(order.getId(), "CANCEL_REFUND").isEmpty()) {
             LoyaltyAccount account = accounts.lockByCustomerId(order.getCustomerId()).orElseThrow(); account.setBalance(Math.addExact(account.getBalance(),order.getRedeemedPoints())); accounts.save(account);
             LoyaltyEntry entry = new LoyaltyEntry(); entry.setCustomerId(order.getCustomerId()); entry.setOrderId(order.getId()); entry.setEntryType("CANCEL_REFUND"); entry.setPoints(order.getRedeemedPoints()); entry.setReason("POS cancellation"); entries.save(entry);
         }
+        entries.findByOrderIdAndEntryType(order.getId(), "EARN").ifPresent(earnEntry -> {
+            if (entries.findByOrderIdAndEntryType(order.getId(), "EARN_REVERSAL").isEmpty()) {
+                accounts.lockByCustomerId(order.getCustomerId()).ifPresent(account -> {
+                    account.setBalance(Math.max(0L, account.getBalance() - earnEntry.getPoints()));
+                    accounts.save(account);
+                    LoyaltyEntry reversal = new LoyaltyEntry();
+                    reversal.setCustomerId(order.getCustomerId());
+                    reversal.setOrderId(order.getId());
+                    reversal.setEntryType("EARN_REVERSAL");
+                    reversal.setPoints(-earnEntry.getPoints());
+                    reversal.setReason("Thu hồi điểm tích lũy do hủy đơn");
+                    entries.save(reversal);
+                });
+            }
+        });
     }
 }

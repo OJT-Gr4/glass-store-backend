@@ -41,6 +41,12 @@ public class StockServiceImpl implements StockService {
     private final StockReservationRepository reservationRepository;
     private final StockMovementRepository movementRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.glassstore.catalog.repository.InventoryBalanceRepository balanceRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.glassstore.catalog.repository.InventoryMovementRepository inventoryMovementRepository;
+
     @Override
     @Transactional
     public StockDtos.ReservationResult reserve(StockDtos.ReserveRequest request) {
@@ -212,6 +218,8 @@ public class StockServiceImpl implements StockService {
             hold.setUpdatedAt(LocalDateTime.now());
             reservationRepository.save(hold);
 
+            syncLocationBalanceForOnlineCommit(hold.getSku(), hold.getQuantity(), hold.getOrderCode());
+
             recordMovement(variant, StockMovementType.COMMIT, -hold.getQuantity(), -hold.getQuantity(),
                     hold.getOrderCode(), actor(request.getActor()), "Xuất kho bán hàng");
         }
@@ -296,6 +304,27 @@ public class StockServiceImpl implements StockService {
         if (variant.getStatus() != null && !"ACTIVE".equalsIgnoreCase(variant.getStatus())) {
             throw ApiException.of(ErrorCode.VARIANT_INACTIVE,
                     "SKU " + variant.getSku() + " hiện không được bán");
+        }
+    }
+
+    private void syncLocationBalanceForOnlineCommit(String sku, int quantity, String orderCode) {
+        if (balanceRepository == null) return;
+        for (String loc : List.of("LAB", "BRANCH_01", "BRANCH_02")) {
+            int updated = balanceRepository.decrementIfAvailable(sku, loc, quantity);
+            if (updated == 1) {
+                if (inventoryMovementRepository != null) {
+                    inventoryMovementRepository.save(InventoryMovement.builder()
+                            .movementType("SALE")
+                            .sku(sku)
+                            .sourceLocationCode(loc)
+                            .referenceType("ONLINE_ORDER")
+                            .referenceId(orderCode != null ? orderCode : "ONLINE")
+                            .quantity(quantity)
+                            .performedBy("ORDER_SERVICE")
+                            .build());
+                }
+                return;
+            }
         }
     }
 

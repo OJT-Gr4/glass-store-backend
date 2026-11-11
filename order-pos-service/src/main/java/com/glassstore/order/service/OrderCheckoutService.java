@@ -50,6 +50,12 @@ public class OrderCheckoutService {
     private final CheckoutIdempotencyService idempotency;
     private final LabDispatchService labDispatchService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private StockDeductionService stockDeductionService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private PromotionService promotionService;
+
     @Transactional
     public CheckoutOutcome checkout(OrderDtos.CheckoutRequest request, String idempotencyKey) {
         String key = requireIdempotencyKey(idempotencyKey);
@@ -180,11 +186,12 @@ public class OrderCheckoutService {
                 .orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND,
                         "Không tìm thấy đơn hàng ID: " + orderId));
 
-        if (order.getPaymentMethod() != PaymentMethod.CASH) {
+        if (order.getPaymentMethod() != PaymentMethod.CASH && order.getChannel() != SalesChannel.POS) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR,
                     "Chỉ xác nhận tiền mặt cho đơn hàng có phương thức CASH");
         }
-        return markPaid(order, actor, "Thu tiền mặt tại quầy", "CASH");
+        String provider = order.getPaymentMethod() == PaymentMethod.VIETQR ? "VIETQR" : "CASH";
+        return markPaid(order, actor, "Xác nhận thanh toán tại quầy POS", provider);
     }
 
     /**
@@ -220,11 +227,28 @@ public class OrderCheckoutService {
         if (payment.getTransactionCode() == null) {
             payment.setTransactionCode(provider + "-" + order.getOrderCode());
         }
+        if (payment.getIdempotencyKey() == null || payment.getIdempotencyKey().isBlank()) {
+            payment.setIdempotencyKey(payment.getTransactionCode());
+        }
         paymentRepository.save(payment);
 
         OrderStatus previous = order.currentStatus();
         Order paid = orderStatusService.transition(order, OrderStatus.PAID, actor, reason);
-        inventoryService.onStatusChanged(paid, previous, OrderStatus.PAID);
+        if (paid.getChannel() == SalesChannel.POS) {
+            if (promotionService != null) {
+                promotionService.consume(paid);
+            }
+            if (stockDeductionService != null) {
+                stockDeductionService.enqueue(paid, payment);
+            } else {
+                inventoryService.onStatusChanged(paid, previous, OrderStatus.PAID);
+            }
+        } else {
+            if (promotionService != null) {
+                promotionService.earnPoints(paid);
+            }
+            inventoryService.onStatusChanged(paid, previous, OrderStatus.PAID);
+        }
         warrantyActivationService.enqueueForPaidOrder(paid);
         labDispatchService.enqueue(paid);
         return paid;
