@@ -109,7 +109,7 @@ public class ConfigurableSandboxPaymentGateway implements PaymentGateway {
         String encodedAccName = URLEncoder.encode(vietqrAccountName, StandardCharsets.UTF_8);
         String vietqrUrl = String.format("https://img.vietqr.io/image/%s-%s-%s.png?amount=%d&addInfo=%s&accountName=%s",
                 vietqrBankId, vietqrAccountNo, vietqrTemplate, amountVnd, encodedDesc, encodedAccName);
-        String qrContent = String.format("2.00#01#%s#%s#%d#%s", vietqrBankId, vietqrAccountNo, amountVnd, request.orderCode());
+        String qrContent = com.glassstore.order.service.VietQrEmvcoUtil.generatePayload(vietqrBankId, vietqrAccountNo, request.amount(), request.orderCode());
 
         // VNPay Sandbox Payment URL
         String vnpayPaymentUrl = buildVnpayPaymentUrl(request.orderCode(), amountVnd, description);

@@ -93,6 +93,12 @@ public class OrderCheckoutService {
                 idempotency, labDispatchService, null, null);
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private StockDeductionService stockDeductionService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private PromotionService promotionService;
+
     @Transactional
     public CheckoutOutcome checkout(OrderDtos.CheckoutRequest request, String idempotencyKey) {
         String key = requireIdempotencyKey(idempotencyKey);
@@ -227,8 +233,9 @@ public class OrderCheckoutService {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR,
                     "Chỉ xác nhận thanh toán trực tiếp tại quầy cho đơn hàng POS hoặc thanh toán tiền mặt");
         }
-        String provider = order.getPaymentMethod() == PaymentMethod.CASH ? "CASH" : "MANUAL_TRANSFER";
-        return markPaid(order, actor, "Thu tiền tại quầy", provider);
+        String provider = order.getPaymentMethod() == PaymentMethod.VIETQR ? "VIETQR"
+                : (order.getPaymentMethod() == PaymentMethod.CASH ? "CASH" : "MANUAL_TRANSFER");
+        return markPaid(order, actor, "Xác nhận thanh toán tại quầy POS", provider);
     }
 
     /**
@@ -264,6 +271,9 @@ public class OrderCheckoutService {
         if (payment.getTransactionCode() == null) {
             payment.setTransactionCode(provider + "-" + order.getOrderCode());
         }
+        if (payment.getIdempotencyKey() == null || payment.getIdempotencyKey().isBlank()) {
+            payment.setIdempotencyKey(payment.getTransactionCode());
+        }
         paymentRepository.save(payment);
 
         OrderStatus previous = order.currentStatus();
@@ -271,11 +281,16 @@ public class OrderCheckoutService {
         if (paid.getChannel() == SalesChannel.POS) {
             if (stockDeductionService != null) {
                 stockDeductionService.enqueue(paid, payment);
+            } else {
+                inventoryService.onStatusChanged(paid, previous, OrderStatus.PAID);
             }
             if (promotions != null) {
                 promotions.consume(paid);
             }
         } else {
+            if (promotions != null) {
+                promotions.earnPoints(paid);
+            }
             inventoryService.onStatusChanged(paid, previous, OrderStatus.PAID);
         }
         warrantyActivationService.enqueueForPaidOrder(paid);

@@ -25,7 +25,19 @@ public class PromotionController {
     @GetMapping("/api/loyalty/accounts/{id}")
     public Map<String,Object> account(@PathVariable("id") Long id,@RequestHeader(value="Authorization",required=false) String token) {
         data.actor(token,false); data.customer(token,id);
-        return Map.of("customerId",id,"balance",accounts.findById(id).map(LoyaltyAccount::getBalance).orElse(0L),"pointValue",policy.getPointValue(),"maxRedemptionPercent",policy.getMaxRedemptionPercent(),"enabled",policy.isEnabled(),"allowVoucherStack",policy.isAllowVoucherStack());
+        long balance = accounts.findById(id).map(LoyaltyAccount::getBalance).orElse(0L);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("customerId", id);
+        result.put("balance", balance);
+        result.put("tier", policy.resolveTier(balance));
+        result.put("pointValue", policy.getPointValue());
+        result.put("earnUnitAmount", policy.getEarnUnitAmount());
+        result.put("earnEnabled", policy.isEarnEnabled());
+        result.put("maxRedemptionPercent", policy.getMaxRedemptionPercent());
+        result.put("enabled", policy.isEnabled());
+        result.put("allowVoucherStack", policy.isAllowVoucherStack());
+        result.put("entries", entries.findByCustomerIdOrderByCreatedAtDesc(id));
+        return result;
     }
     public record Adjustment(long points,String reason) {}
     @PostMapping("/api/loyalty/accounts/{id}/adjust") @Transactional

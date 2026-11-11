@@ -33,3 +33,5 @@ glassstore:
   demo:
     seed:
       enabled: ${DEMO_SEED_ENABLED:false}
+  inventory:
+    initial-branch-quantity: ${INITIAL_BRANCH_QTY:5}

@@ -27,8 +27,8 @@ INSERT INTO inventory_locations(code,name,active) VALUES
 INSERT INTO inventory_balances(variant_id,location_id,quantity)
 SELECT v.id,l.id,
   CASE l.code
-    WHEN 'BRANCH_01' THEN LEAST(5,GREATEST(v.stock_quantity,0))
-    WHEN 'BRANCH_02' THEN LEAST(5,GREATEST(v.stock_quantity-5,0))
-    ELSE GREATEST(v.stock_quantity-10,0)
+    WHEN 'BRANCH_01' THEN 35
+    WHEN 'BRANCH_02' THEN 30
+    ELSE 50
   END
 FROM product_variants v CROSS JOIN inventory_locations l;

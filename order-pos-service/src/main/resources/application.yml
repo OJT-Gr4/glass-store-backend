@@ -58,3 +58,32 @@ glassstore:
     seed:
       enabled: ${DEMO_SEED_ENABLED:false}
 
+payment:
+  sandbox:
+    enabled: ${PAYMENT_SANDBOX_ENABLED:true}
+    provider: ${PAYMENT_SANDBOX_PROVIDER:VIETQR}
+    secret-key: ${PAYMENT_SANDBOX_SECRET:GlassStoreSandboxSecretKey20261110!@#HMAC512}
+  vietqr:
+    bank-id: ${PAYMENT_VIETQR_BANK_ID:970422}
+    account-no: ${PAYMENT_VIETQR_ACCOUNT_NO:0938773607}
+    account-name: ${PAYMENT_VIETQR_ACCOUNT_NAME:CONG TY KINH MAT OPTIVISION}
+    template: ${PAYMENT_VIETQR_TEMPLATE:compact2}
+  vnpay:
+    tmn-code: ${PAYMENT_VNPAY_TMN_CODE:OPTIVIS1}
+    hash-secret: ${PAYMENT_VNPAY_HASH_SECRET:GlassStoreSandboxSecretKey20261110!@#HMAC512}
+    url: ${PAYMENT_VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+    return-url: ${PAYMENT_VNPAY_RETURN_URL:http://localhost:5173/payment-return}
+
+# Official VietQR Pro Callback API (Open API Banking: dev.vietqr.org)
+vietqr:
+  api:
+    base-url: ${VIETQR_BASE_URL:https://dev.vietqr.org}
+    client-username: ${VIETQR_CLIENT_USERNAME:customer-vietqrtest-user2468}
+    client-password: ${VIETQR_CLIENT_PASSWORD:Y3VzdG9tZXItdmlldHFydGVzdC11c2VyMjQ2ODpZM1Z6ZEc5dFpYSXRkbWxsZEhGeWRHVnpkQzExYzJWeU1qUTJPQT09}
+  partner:
+    username: ${VIETQR_PARTNER_USERNAME:glassstore_pos}
+    password: ${VIETQR_PARTNER_PASSWORD:GlassStore@VietQr2026}
+    bank-code: ${VIETQR_BANK_CODE:MB}
+    bank-account: ${VIETQR_BANK_ACCOUNT:0938773607}
+    user-bank-name: ${VIETQR_USER_BANK_NAME:CONG TY KINH MAT OPTIVISION}
+    token-secret: ${VIETQR_TOKEN_SECRET:GlassStoreVietQrSecretKey20261111!@#Token300sValidation}

@@ -6,5 +6,6 @@ import jakarta.persistence.LockModeType;
 import java.util.*;
 public interface LoyaltyEntryRepository extends JpaRepository<LoyaltyEntry,Long> {
  List<LoyaltyEntry> findByCustomerIdOrderByCreatedAtDesc(Long customerId);
+ Optional<LoyaltyEntry> findByOrderIdAndEntryType(Long orderId, String entryType);
 }
 

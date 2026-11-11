@@ -173,12 +173,12 @@ public class OrderService {
                 .idempotencyKey(requestIdempotencyKey != null
                         ? requestIdempotencyKey
                         : UUID.randomUUID().toString())
-                .provider(saved.getPaymentMethod() == PaymentMethod.VIETQR && !saved.isManualPaymentConfirmed() ? "SEPAY" : null)
+                .provider(saved.getPaymentMethod() == PaymentMethod.VIETQR && !saved.isManualPaymentConfirmed() ? "VIETQR" : null)
                 .status(isSuccess ? PaymentStatus.SUCCESS : PaymentStatus.PENDING)
                 .paidAt(isSuccess ? LocalDateTime.now() : null)
                 .confirmationMode(saved.getPaymentMethod() == PaymentMethod.CASH ? "CASH_RECEIVED"
                         : saved.isManualPaymentConfirmed() ? "MANUAL_TRANSFER"
-                        : "SEPAY_GATEWAY")
+                        : "VIETQR_GATEWAY")
                 .confirmedBy(isSuccess ? actorName : null)
                 .confirmedAt(isSuccess ? LocalDateTime.now() : null)
                 .paymentReference(order.getPaymentReference())
