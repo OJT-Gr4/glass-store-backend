@@ -39,6 +39,11 @@ import java.util.List;
 @CrossOrigin(origins = "*")
 public class InventoryController {
 
+    private final InventoryQueryService queryService;
+    private final StockService stockService;
+    private final InventoryService inventoryService;
+    private final InventoryReconciliationService reconciliationService;
+
     @PostMapping("/internal/inventory/sales/check")
     public ResponseEntity<Void> checkAvailability(@Valid @RequestBody StockCheckRequest request) {
         inventoryService.checkAvailability(request);
@@ -50,12 +55,8 @@ public class InventoryController {
         inventoryService.cancelSale(request);
         return ResponseEntity.noContent().build();
     }
-
-    private final InventoryQueryService queryService;
-    private final StockService stockService;
-    private final InventoryService inventoryService;
-    private final InventoryReconciliationService reconciliationService;
-
+    
+    
     @GetMapping("/api/variants/sku/{sku}")
     public ResponseEntity<ApiResponse<VariantInfoDTO>> getBySku(@PathVariable("sku") String sku) {
         return ResponseEntity.ok(ApiResponse.success("OK", queryService.getBySku(sku)));
