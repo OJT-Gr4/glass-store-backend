@@ -24,6 +24,7 @@ class GatewayAccessSecurityTest {
     @TestConfiguration static class Routes {
         @Bean RouterFunction<ServerResponse> endpoints() {
             return RouterFunctions.route().GET("/api/products",r -> ServerResponse.ok().build())
+                .POST("/api/payments/sepay/ipn",r -> ServerResponse.ok().build())
                 .GET("/api/orders",r -> ServerResponse.ok().build())
                 .POST("/api/users/staff",r -> ServerResponse.ok().build())
                 .POST("/api/lab-jobs/from-order",r -> ServerResponse.ok().build()).build();
@@ -40,6 +41,11 @@ class GatewayAccessSecurityTest {
         client.get().uri("/api/orders").exchange().expectStatus().isUnauthorized();
         client.get().uri("/api/orders").header("Authorization",token("CUSTOMER","ACCESS",Instant.now().plusSeconds(300)))
             .exchange().expectStatus().isOk();
+    }
+    @Test void sepayIpnCanReachAdapterWithoutJwtButConfigurationRequiresLogin() {
+        client.post().uri("/api/payments/sepay/ipn").exchange().expectStatus().isOk();
+        client.get().uri("/api/payments/sepay/configuration").exchange().expectStatus().isUnauthorized();
+        client.post().uri("/api/payments/order/1/initiate").exchange().expectStatus().isUnauthorized();
     }
     @Test void expiredAndRefreshTokensCannotAccessBusinessApis() {
         client.get().uri("/api/orders").header("Authorization",token("ADMIN","ACCESS",Instant.now().minusSeconds(120)))

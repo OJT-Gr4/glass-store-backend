@@ -5,6 +5,7 @@ import com.glassstore.common.exception.ErrorCode;
 import com.glassstore.order.domain.PaymentMethod;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 /**
  * Temporary implementation used while no gateway credentials exist (OQ-05).

@@ -33,7 +33,6 @@ import java.util.concurrent.ThreadLocalRandom;
  * Prices and totals are recomputed server-side (BR-05, BR-16).</p>
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class OrderCheckoutService {
 
@@ -49,6 +48,50 @@ public class OrderCheckoutService {
     private final LabServiceClient labServiceClient;
     private final CheckoutIdempotencyService idempotency;
     private final LabDispatchService labDispatchService;
+    private final StockDeductionService stockDeductionService;
+    private final PromotionService promotions;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public OrderCheckoutService(OrderRepository orderRepository,
+                                PaymentRepository paymentRepository,
+                                BasketPricingService pricingService,
+                                OrderStatusService orderStatusService,
+                                OrderInventoryService inventoryService,
+                                LabClient labClient,
+                                WarrantyActivationService warrantyActivationService,
+                                LabServiceClient labServiceClient,
+                                CheckoutIdempotencyService idempotency,
+                                LabDispatchService labDispatchService,
+                                @org.springframework.beans.factory.annotation.Autowired(required = false) StockDeductionService stockDeductionService,
+                                @org.springframework.beans.factory.annotation.Autowired(required = false) PromotionService promotions) {
+        this.orderRepository = orderRepository;
+        this.paymentRepository = paymentRepository;
+        this.pricingService = pricingService;
+        this.orderStatusService = orderStatusService;
+        this.inventoryService = inventoryService;
+        this.labClient = labClient;
+        this.warrantyActivationService = warrantyActivationService;
+        this.labServiceClient = labServiceClient;
+        this.idempotency = idempotency;
+        this.labDispatchService = labDispatchService;
+        this.stockDeductionService = stockDeductionService;
+        this.promotions = promotions;
+    }
+
+    public OrderCheckoutService(OrderRepository orderRepository,
+                                PaymentRepository paymentRepository,
+                                BasketPricingService pricingService,
+                                OrderStatusService orderStatusService,
+                                OrderInventoryService inventoryService,
+                                LabClient labClient,
+                                WarrantyActivationService warrantyActivationService,
+                                LabServiceClient labServiceClient,
+                                CheckoutIdempotencyService idempotency,
+                                LabDispatchService labDispatchService) {
+        this(orderRepository, paymentRepository, pricingService, orderStatusService,
+                inventoryService, labClient, warrantyActivationService, labServiceClient,
+                idempotency, labDispatchService, null, null);
+    }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private StockDeductionService stockDeductionService;
@@ -124,7 +167,7 @@ public class OrderCheckoutService {
                 .prescriptionId(request.getPrescriptionId())
                 .staffName(request.getStaffName())
                 .branchName(request.getBranchName())
-                .notes(request.getNotes())
+                .notes(effectiveNotes(request.getNotes(), request.getPaymentProvider()))
                 .posSessionId(request.getPosSessionId())
                 .invoiceNumber(channel == SalesChannel.POS ? "INV-" + orderCode : null)
                 .build();
@@ -188,9 +231,10 @@ public class OrderCheckoutService {
 
         if (order.getPaymentMethod() != PaymentMethod.CASH && order.getChannel() != SalesChannel.POS) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR,
-                    "Chỉ xác nhận tiền mặt cho đơn hàng có phương thức CASH");
+                    "Chỉ xác nhận thanh toán trực tiếp tại quầy cho đơn hàng POS hoặc thanh toán tiền mặt");
         }
-        String provider = order.getPaymentMethod() == PaymentMethod.VIETQR ? "VIETQR" : "CASH";
+        String provider = order.getPaymentMethod() == PaymentMethod.VIETQR ? "VIETQR"
+                : (order.getPaymentMethod() == PaymentMethod.CASH ? "CASH" : "MANUAL_TRANSFER");
         return markPaid(order, actor, "Xác nhận thanh toán tại quầy POS", provider);
     }
 
@@ -235,17 +279,17 @@ public class OrderCheckoutService {
         OrderStatus previous = order.currentStatus();
         Order paid = orderStatusService.transition(order, OrderStatus.PAID, actor, reason);
         if (paid.getChannel() == SalesChannel.POS) {
-            if (promotionService != null) {
-                promotionService.consume(paid);
-            }
             if (stockDeductionService != null) {
                 stockDeductionService.enqueue(paid, payment);
             } else {
                 inventoryService.onStatusChanged(paid, previous, OrderStatus.PAID);
             }
+            if (promotions != null) {
+                promotions.consume(paid);
+            }
         } else {
-            if (promotionService != null) {
-                promotionService.earnPoints(paid);
+            if (promotions != null) {
+                promotions.earnPoints(paid);
             }
             inventoryService.onStatusChanged(paid, previous, OrderStatus.PAID);
         }
@@ -607,5 +651,13 @@ public class OrderCheckoutService {
                 .map(OrderItem::getSubtotal)
                 .reduce(BasketPricingService.ZERO, BigDecimal::add);
         return sum.compareTo(order.getTotalAmount()) == 0;
+    }
+
+    private static String effectiveNotes(String notes, String provider) {
+        if (provider == null || provider.isBlank()) {
+            return notes;
+        }
+        String tag = "[PAYMENT_PROVIDER:" + provider.trim().toUpperCase() + "]";
+        return (notes != null && !notes.isBlank()) ? (notes + " " + tag) : tag;
     }
 }

@@ -2,11 +2,14 @@ package com.glassstore.order.service;
 
 import com.glassstore.common.exception.ApiException;
 import com.glassstore.common.exception.ErrorCode;
+import com.glassstore.order.domain.OrderStatus;
 import com.glassstore.order.domain.PaymentMethod;
 import com.glassstore.order.domain.PaymentStatus;
+import com.glassstore.order.domain.SalesChannel;
 import com.glassstore.order.entity.Order;
 import com.glassstore.order.entity.Payment;
 import com.glassstore.order.payment.PaymentGateway;
+import com.glassstore.order.payment.SePayGateway;
 import com.glassstore.order.repository.OrderRepository;
 import com.glassstore.order.repository.PaymentRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +39,7 @@ class PaymentServiceTest {
         paymentRepository = mock(PaymentRepository.class);
         orderRepository = mock(OrderRepository.class);
         paymentGateway = mock(PaymentGateway.class);
+        when(paymentGateway.supports(any())).thenReturn(true);
         checkoutService = mock(OrderCheckoutService.class);
         orderStatusService = mock(OrderStatusService.class);
         when(orderRepository.lockById(any())).thenAnswer(inv -> orderRepository.findByOrderCode("ORD-1").or(() -> orderRepository.findById(inv.getArgument(0))));
@@ -59,7 +63,8 @@ class PaymentServiceTest {
                 true, "TEST", "txn-1", "ORD-1", new BigDecimal("10.00"), true, "ok"));
         when(paymentRepository.findByProviderAndExternalTransactionId("TEST", "txn-1"))
                 .thenReturn(Optional.of(existing));
-        when(orderRepository.findByOrderCode("ORD-1")).thenReturn(Optional.of(Order.builder().id(1L).orderCode("ORD-1").build()));
+        when(orderRepository.findByOrderCode("ORD-1")).thenReturn(Optional.of(Order.builder()
+                .id(1L).orderCode("ORD-1").finalAmount(new BigDecimal("10.00")).build()));
 
         PaymentService.CallbackOutcome outcome = service.handleCallback("body", "sig");
 
@@ -89,6 +94,7 @@ class PaymentServiceTest {
                 .thenReturn(Optional.empty());
         when(orderRepository.findByOrderCode("ORD-1")).thenReturn(Optional.of(Order.builder()
                 .id(1L).orderCode("ORD-1").finalAmount(new BigDecimal("10.00"))
+                .channel(com.glassstore.order.domain.SalesChannel.ONLINE).status(com.glassstore.order.domain.OrderStatus.PENDING_PAYMENT)
                 .paymentMethod(PaymentMethod.VNPAY).build()));
         when(paymentRepository.existsByOrderIdAndStatus(1L, PaymentStatus.SUCCESS)).thenReturn(false);
 
@@ -118,6 +124,36 @@ class PaymentServiceTest {
     }
 
     @Test
+    @DisplayName("History proactively queries gateway and marks order paid when captured")
+    void historyProactiveGatewaySync() {
+        Order order = Order.builder()
+                .id(1L).orderCode("ORD-1").finalAmount(new BigDecimal("10.00"))
+                .channel(SalesChannel.ONLINE).status(OrderStatus.PENDING_PAYMENT)
+                .paymentMethod(PaymentMethod.VIETQR).build();
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(orderRepository.findByOrderCode("ORD-1")).thenReturn(Optional.of(order));
+
+        Payment pending = Payment.builder()
+                .id(10L).orderId(1L).status(PaymentStatus.PENDING)
+                .amount(new BigDecimal("10.00")).provider(SePayGateway.PROVIDER).build();
+        when(paymentRepository.findByOrderIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(pending));
+        when(paymentRepository.findByProviderAndExternalTransactionId(SePayGateway.PROVIDER, "txn-sync"))
+                .thenReturn(Optional.empty());
+        when(paymentRepository.findFirstByOrderIdAndStatus(1L, PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(Payment.builder().id(10L).orderId(1L).status(PaymentStatus.SUCCESS).build()));
+        when(paymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        when(paymentGateway.queryStatus("ORD-1")).thenReturn(Optional.of(new PaymentGateway.VerificationResult(
+                true, SePayGateway.PROVIDER, "txn-sync", "ORD-1", new BigDecimal("10.00"), true, "Captured", "order-1", "txn-sync")));
+
+        List<Payment> history = service.history(1L);
+
+        verify(paymentGateway).queryStatus("ORD-1");
+        verify(checkoutService).markPaid(eq(order), eq("GATEWAY"), anyString(), eq(SePayGateway.PROVIDER), eq(10L));
+        assertThat(history).isNotEmpty();
+    }
+
+    @Test
     @DisplayName("Initiate refuses a second charge on an already-paid order")
     void initiateAlreadyPaid() {
         when(orderRepository.findById(1L)).thenReturn(Optional.of(Order.builder()
@@ -136,6 +172,8 @@ class PaymentServiceTest {
     void initiateUnconfigured() {
         when(orderRepository.findById(1L)).thenReturn(Optional.of(Order.builder()
                 .id(1L).orderCode("ORD-1").finalAmount(new BigDecimal("10.00"))
+                .channel(com.glassstore.order.domain.SalesChannel.ONLINE)
+                .status(com.glassstore.order.domain.OrderStatus.PENDING_PAYMENT)
                 .paymentMethod(PaymentMethod.VNPAY).build()));
         when(paymentRepository.existsByOrderIdAndStatus(1L, PaymentStatus.SUCCESS)).thenReturn(false);
         when(paymentGateway.initiate(any())).thenThrow(ApiException.of(ErrorCode.PAYMENT_PROVIDER_NOT_CONFIGURED));
@@ -144,5 +182,29 @@ class PaymentServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.PAYMENT_PROVIDER_NOT_CONFIGURED);
+    }
+
+    @Test
+    @DisplayName("Initiate allows POS orders in PENDING_PAYMENT with VIETQR")
+    void initiatePosOrder() {
+        Order posOrder = Order.builder()
+                .id(2L)
+                .orderCode("OPT-100")
+                .finalAmount(new BigDecimal("500000.00"))
+                .channel(SalesChannel.POS)
+                .status(OrderStatus.PENDING_PAYMENT)
+                .paymentMethod(PaymentMethod.VIETQR)
+                .build();
+        when(orderRepository.lockById(2L)).thenReturn(Optional.of(posOrder));
+        when(paymentRepository.existsByOrderIdAndStatus(2L, PaymentStatus.SUCCESS)).thenReturn(false);
+        when(paymentGateway.initiate(any())).thenReturn(new PaymentGateway.InitiationResult(
+                SePayGateway.PROVIDER, "ext-1", "https://pay.sepay.vn/v1/checkout/init", null, true, "POST", java.util.Map.of()));
+        when(paymentRepository.findByOrderIdOrderByCreatedAtDesc(2L)).thenReturn(List.of());
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PaymentGateway.InitiationResult result = service.initiate(2L);
+        assertThat(result.provider()).isEqualTo(SePayGateway.PROVIDER);
+        assertThat(result.paymentUrl()).isEqualTo("https://pay.sepay.vn/v1/checkout/init");
+        verify(paymentGateway).initiate(any());
     }
 }

@@ -4,9 +4,12 @@ import com.glassstore.common.exception.ApiException;
 import com.glassstore.common.exception.ErrorCode;
 import com.glassstore.order.domain.OrderStatus;
 import com.glassstore.order.domain.PaymentStatus;
+import com.glassstore.order.domain.PaymentMethod;
+import com.glassstore.order.domain.SalesChannel;
 import com.glassstore.order.entity.Order;
 import com.glassstore.order.entity.Payment;
 import com.glassstore.order.payment.PaymentGateway;
+import com.glassstore.order.payment.SePayGateway;
 import com.glassstore.order.repository.OrderRepository;
 import com.glassstore.order.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +18,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -37,13 +39,22 @@ public class PaymentService {
     private final OrderCheckoutService checkoutService;
     private final OrderStatusService orderStatusService;
 
+    @Transactional
     public List<Payment> history(Long orderId) {
-        requireOrder(orderId);
+        Order order = requireOrder(orderId);
+        if (order.getStatus() == OrderStatus.PENDING_PAYMENT) {
+            syncGatewayStatus(order);
+        }
         return paymentRepository.findByOrderIdOrderByCreatedAtDesc(orderId);
     }
 
     @Transactional
     public PaymentGateway.InitiationResult initiate(Long orderId) {
+        return initiate(orderId, null);
+    }
+
+    @Transactional
+    public PaymentGateway.InitiationResult initiate(Long orderId, String requestedProvider) {
         Order order = orderRepository.lockById(orderId).orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND));
         if (paymentRepository.existsByOrderIdAndStatus(orderId, PaymentStatus.SUCCESS)) {
             throw ApiException.of(ErrorCode.PAYMENT_ALREADY_SETTLED,
@@ -53,12 +64,30 @@ public class PaymentService {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR,
                     "Phương thức thanh toán của đơn này không dùng cổng thanh toán");
         }
+        if ((order.getChannel() != SalesChannel.ONLINE && order.getChannel() != SalesChannel.POS)
+                || order.getStatus() != OrderStatus.PENDING_PAYMENT) {
+            throw ApiException.of(ErrorCode.ORDER_INVALID_TRANSITION,
+                    "Chỉ khởi tạo gateway cho đơn hàng đang chờ thanh toán.");
+        }
+        if (!paymentGateway.supports(order.getPaymentMethod())) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Gateway không hỗ trợ phương thức của đơn hàng.");
+        }
+
+        String effectiveProvider = requestedProvider;
+        if (effectiveProvider == null || effectiveProvider.isBlank()) {
+            if (order.getNotes() != null && order.getNotes().toUpperCase().contains("SEPAY")) {
+                effectiveProvider = "SEPAY";
+            } else if (order.getNotes() != null && order.getNotes().toUpperCase().contains("VIETQR")) {
+                effectiveProvider = "VIETQR";
+            }
+        }
 
         PaymentGateway.InitiationResult result = paymentGateway.initiate(
                 new PaymentGateway.InitiationRequest(
                         order.getOrderCode(),
                         order.getFinalAmount(),
-                        "Thanh toán đơn " + order.getOrderCode()));
+                        "Thanh toán đơn " + order.getOrderCode(),
+                        effectiveProvider));
 
         Payment pending = paymentRepository.findByOrderIdOrderByCreatedAtDesc(orderId).stream()
                 .filter(p -> p.getStatus() == PaymentStatus.PENDING)
@@ -77,6 +106,28 @@ public class PaymentService {
     }
 
     /**
+     * Proactively queries the payment gateway (e.g. SePay PG API) to check if money
+     * has been settled for an order, solving race conditions and lost webhooks in local dev.
+     */
+    @Transactional
+    public Optional<Payment> syncGatewayStatus(Order order) {
+        if (order == null || order.getStatus() != OrderStatus.PENDING_PAYMENT) {
+            return Optional.empty();
+        }
+        try {
+            Optional<PaymentGateway.VerificationResult> queryResult = paymentGateway.queryStatus(order.getOrderCode());
+            if (queryResult.isPresent() && queryResult.get().success()) {
+                CallbackOutcome outcome = processVerification(queryResult.get());
+                return Optional.ofNullable(outcome.payment());
+            }
+        } catch (Exception ex) {
+            log.warn("Lỗi khi chủ động truy vấn trạng thái từ cổng thanh toán cho đơn {}: {}",
+                    order.getOrderCode(), ex.getMessage());
+        }
+        return Optional.empty();
+    }
+
+    /**
      * Idempotent webhook handler. Duplicate callbacks for the same provider transaction
      * return the original SUCCESS row (EX-PAY-03, BR-15).
      */
@@ -87,14 +138,22 @@ public class PaymentService {
             throw ApiException.of(ErrorCode.PAYMENT_SIGNATURE_INVALID,
                     "Chữ ký xác thực thanh toán không hợp lệ");
         }
+        return processVerification(verified);
+    }
 
+    @Transactional
+    public CallbackOutcome processVerification(PaymentGateway.VerificationResult verified) {
         Order order = orderRepository.lockByOrderCode(verified.orderCode())
                 .orElseThrow(() -> ApiException.of(ErrorCode.ORDER_NOT_FOUND,"Không tìm thấy đơn hàng: " + verified.orderCode()));
         Optional<Payment> existing = paymentRepository.findByProviderAndExternalTransactionId(
                 verified.provider(), verified.externalTransactionId());
         if (existing.isPresent() && !order.getId().equals(existing.get().getOrderId()))
             throw ApiException.of(ErrorCode.VALIDATION_ERROR,"Mã giao dịch thuộc đơn hàng khác.");
-        if (existing.isPresent() && existing.get().getStatus() == PaymentStatus.SUCCESS) {
+        validateAmount(order.getFinalAmount(), verified.amount());
+        Payment sepayAttempt = SePayGateway.PROVIDER.equals(verified.provider())
+                ? requireSePayAttempt(order, verified, existing) : null;
+        if (existing.isPresent() && List.of(PaymentStatus.SUCCESS, PaymentStatus.REFUND_PENDING,
+                PaymentStatus.REFUNDED).contains(existing.get().getStatus())) {
             log.info("Duplicate payment callback ignored for txn {}", verified.externalTransactionId());
             return new CallbackOutcome(existing.get(), true);
         }
@@ -104,11 +163,9 @@ public class PaymentService {
                     "Đơn hàng " + order.getOrderCode() + " đã được thanh toán");
         }
 
-        BigDecimal expected = order.getFinalAmount().setScale(2, RoundingMode.HALF_UP);
-        BigDecimal paid = verified.amount() == null ? null : verified.amount().setScale(2, RoundingMode.HALF_UP);
-        if (paid == null || expected.compareTo(paid) != 0) {
-            throw ApiException.of(ErrorCode.PAYMENT_AMOUNT_MISMATCH,
-                    "Số tiền thanh toán không khớp với giá trị đơn hàng");
+        if (sepayAttempt != null && order.getStatus() != OrderStatus.PENDING_PAYMENT) {
+            throw ApiException.of(ErrorCode.ORDER_INVALID_TRANSITION,
+                    "IPN cho đơn không còn chờ thanh toán; cần đối soát, không tự mở lại đơn.");
         }
 
         if (!verified.success()) {
@@ -127,7 +184,7 @@ public class PaymentService {
         }
 
         final Long lockedOrderId=order.getId();
-        Payment pending = existing.orElseGet(() -> paymentRepository.findByOrderIdOrderByCreatedAtDesc(lockedOrderId).stream()
+        Payment pending = sepayAttempt != null ? sepayAttempt : existing.orElseGet(() -> paymentRepository.findByOrderIdOrderByCreatedAtDesc(lockedOrderId).stream()
                 .filter(p -> p.getStatus() == PaymentStatus.PENDING)
                 .findFirst()
                 .orElseGet(() -> Payment.builder()
@@ -139,6 +196,8 @@ public class PaymentService {
         pending.setProvider(verified.provider());
         pending.setExternalTransactionId(verified.externalTransactionId());
         pending.setStatus(PaymentStatus.PENDING);
+        pending.setProviderOrderId(verified.providerOrderId());
+        pending.setPaymentReference(verified.paymentReference());
         paymentRepository.save(pending);
 
         checkoutService.markPaid(order, "GATEWAY", "Xác thực callback cổng thanh toán", verified.provider(), pending.getId());
@@ -148,6 +207,32 @@ public class PaymentService {
         success.setProvider(verified.provider());
         paymentRepository.save(success);
         return new CallbackOutcome(success, false);
+    }
+
+    private void validateAmount(BigDecimal expected, BigDecimal received) {
+        if (expected == null || received == null || expected.compareTo(received) != 0) {
+            throw ApiException.of(ErrorCode.PAYMENT_AMOUNT_MISMATCH,
+                    "Số tiền thanh toán không khớp với giá trị đơn hàng");
+        }
+    }
+
+    private Payment requireSePayAttempt(Order order, PaymentGateway.VerificationResult verified,
+                                        Optional<Payment> existing) {
+        if ((order.getChannel() != SalesChannel.ONLINE && order.getChannel() != SalesChannel.POS)
+                || order.getPaymentMethod() != PaymentMethod.VIETQR) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "IPN SePay không khớp kênh/phương thức của đơn.");
+        }
+        Payment attempt = existing.orElseGet(() -> paymentRepository.findByOrderIdOrderByCreatedAtDesc(order.getId())
+                .stream().filter(payment -> payment.getStatus() == PaymentStatus.PENDING
+                        && SePayGateway.PROVIDER.equals(payment.getProvider())).findFirst()
+                .orElseThrow(() -> ApiException.of(ErrorCode.PAYMENT_NOT_FOUND,
+                        "Đơn chưa khởi tạo thanh toán SePay. Không ghi nhận callback ngoài luồng.")));
+        validateAmount(attempt.getAmount(), verified.amount());
+        if ((attempt.getProviderOrderId() != null && !attempt.getProviderOrderId().equals(verified.providerOrderId()))
+                || (attempt.getPaymentReference() != null && !attempt.getPaymentReference().equals(verified.paymentReference()))) {
+            throw ApiException.of(ErrorCode.CONFLICT, "IPN lặp có định danh giao dịch khác nội dung đã ghi nhận.");
+        }
+        return attempt;
     }
 
     @Transactional

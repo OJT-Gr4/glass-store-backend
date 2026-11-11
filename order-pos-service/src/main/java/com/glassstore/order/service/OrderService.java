@@ -50,7 +50,7 @@ public class OrderService {
                 .staffName(request.getStaffName()).posSessionId(request.getPosSessionId()).notes(request.getNotes())
                 .voucherCode(request.getVoucherCode()).pointsToUse(request.getPointsToUse())
                 .cashReceived(request.getCashReceived()).manualPaymentConfirmed(request.isManualPaymentConfirmed())
-                .gatewayRequested(request.isGatewayRequested())
+                .gatewayRequested(request.isGatewayRequested() || "SEPAY".equalsIgnoreCase(request.getPaymentReference()))
                 .paymentReference(request.getPaymentReference()).checkoutRequestHash(idempotency.fingerprint(request))
                 .items(new ArrayList<>()).build();
         for (OrderDtos.CheckoutLine line : request.getItems()) {
@@ -79,8 +79,10 @@ public class OrderService {
                 || orderRepository.findByIdempotencyKey(requestIdempotencyKey).isPresent())
             throw com.glassstore.common.exception.ApiException.of(com.glassstore.common.exception.ErrorCode.IDEMPOTENCY_CONFLICT,
                     "Idempotency-Key thuộc đơn cũ chưa có dấu nội dung. Tra cứu đơn cũ, không thanh toán lại.");
-        if (order.getPaymentMethod()!=PaymentMethod.CASH && !order.isManualPaymentConfirmed() && !order.isGatewayRequested())
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Thu ngân phải xác nhận đã nhận tiền chuyển khoản/thẻ tại quầy.");
+        boolean isGatewayTransfer = order.getPaymentMethod() == PaymentMethod.VIETQR
+                && (order.isGatewayRequested() || "SEPAY".equalsIgnoreCase(order.getPaymentReference()));
+        if (order.getPaymentMethod() != PaymentMethod.CASH && !order.isManualPaymentConfirmed() && !isGatewayTransfer)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thu ngân phải xác nhận đã nhận tiền chuyển khoản/thẻ tại quầy.");
         order.setStaffName(actorName);
         if (order.getChannel() == SalesChannel.POS) promotions.calculate(order, token, true);
         if (order.getId() != null || order.getItems() == null || order.getItems().isEmpty()) {
@@ -121,7 +123,6 @@ public class OrderService {
             order.setDiscountAmount(discount);
             order.setTaxAmount(total.subtract(discount).multiply(new BigDecimal("0.08")).setScale(0, RoundingMode.HALF_UP));
             order.setFinalAmount(total.subtract(discount).add(order.getTaxAmount()));
-            order.setStatus(OrderStatus.PAID);
         }
         if (order.getCustomerName() == null || order.getCustomerName().isBlank()) order.setCustomerName("Khách vãng lai");
         if (order.getCustomerPhone() == null) order.setCustomerPhone("");
@@ -154,12 +155,16 @@ public class OrderService {
         if (order.getChannel() == SalesChannel.POS) order.setStatus(OrderStatus.PENDING_PAYMENT);
         Order saved = orderRepository.save(order);
 
-        if (saved.getChannel() == SalesChannel.POS && !saved.isGatewayRequested()) {
+        boolean isImmediateSettlement = (saved.getPaymentMethod() == PaymentMethod.CASH
+                || saved.isManualPaymentConfirmed());
+
+        if (saved.getChannel() == SalesChannel.POS && isImmediateSettlement) {
             saved = orderStatusService.transition(saved, OrderStatus.PAID, saved.getStaffName(), "Thanh toán tại quầy");
             promotions.consume(saved);
         }
 
         // Record payment
+        boolean isSuccess = isImmediateSettlement;
         Payment payment = Payment.builder()
                 .orderId(saved.getId())
                 .paymentMethod(saved.getPaymentMethod() != null ? saved.getPaymentMethod() : PaymentMethod.VIETQR)
@@ -168,11 +173,14 @@ public class OrderService {
                 .idempotencyKey(requestIdempotencyKey != null
                         ? requestIdempotencyKey
                         : UUID.randomUUID().toString())
-                .status(saved.isGatewayRequested() ? PaymentStatus.PENDING : PaymentStatus.SUCCESS)
-                .paidAt(saved.isGatewayRequested() ? null : LocalDateTime.now())
-                .confirmationMode(saved.isGatewayRequested() ? "SEPAY_GATEWAY" : saved.getPaymentMethod()==PaymentMethod.CASH?"CASH_RECEIVED":saved.getPaymentMethod()==PaymentMethod.VIETQR?"MANUAL_TRANSFER":"CARD_TERMINAL")
-                .confirmedBy(saved.isGatewayRequested() ? null : actorName)
-                .confirmedAt(saved.isGatewayRequested() ? null : LocalDateTime.now())
+                .provider(saved.getPaymentMethod() == PaymentMethod.VIETQR && !saved.isManualPaymentConfirmed() ? "VIETQR" : null)
+                .status(isSuccess ? PaymentStatus.SUCCESS : PaymentStatus.PENDING)
+                .paidAt(isSuccess ? LocalDateTime.now() : null)
+                .confirmationMode(saved.getPaymentMethod() == PaymentMethod.CASH ? "CASH_RECEIVED"
+                        : saved.isManualPaymentConfirmed() ? "MANUAL_TRANSFER"
+                        : "VIETQR_GATEWAY")
+                .confirmedBy(isSuccess ? actorName : null)
+                .confirmedAt(isSuccess ? LocalDateTime.now() : null)
                 .paymentReference(order.getPaymentReference())
                 .build();
         paymentRepository.save(payment);
@@ -183,7 +191,7 @@ public class OrderService {
             labDispatchService.enqueue(saved);
         }
 
-        log.info("Tạo đơn hàng POS thành công: Mã {}", saved.getOrderCode());
+        log.info("Tạo đơn hàng POS: Mã {}, Trạng thái {}, Thanh toán {}", saved.getOrderCode(), saved.getStatus(), payment.getStatus());
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 }
