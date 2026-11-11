@@ -64,6 +64,9 @@ public class User {
     @Column(name = "address", length = 500)
     private String address;
 
+    @Column(name = "avatar_url", columnDefinition = "MEDIUMTEXT")
+    private String avatarUrl;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "user_roles",
@@ -119,6 +122,7 @@ public class User {
         private LocalDateTime marketingConsentUpdatedAt;
         private String gender;
         private String address;
+        private String avatarUrl;
         private Set<Role> roles = new HashSet<>();
         
 
@@ -139,6 +143,7 @@ public class User {
         public UserBuilder marketingConsentUpdatedAt(LocalDateTime marketingConsentUpdatedAt) { this.marketingConsentUpdatedAt = marketingConsentUpdatedAt; return this; }
         public UserBuilder gender(String gender) { this.gender = gender; return this; }
         public UserBuilder address(String address) { this.address = address; return this; }
+        public UserBuilder avatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; return this; }
         public UserBuilder roles(Set<Role> roles) { this.roles = roles; return this; }
 
         public User build() {
@@ -149,6 +154,7 @@ public class User {
             u.setMarketingConsentUpdatedAt(marketingConsentUpdatedAt);
             u.setGender(gender);
             u.setAddress(address);
+            u.setAvatarUrl(avatarUrl);
             return u;
         }
     }
@@ -187,6 +193,8 @@ public class User {
     public void setGender(String gender) { this.gender = gender; }
     public String getAddress() { return address; }
     public void setAddress(String address) { this.address = address; }
+    public String getAvatarUrl() { return avatarUrl; }
+    public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
     public Set<Role> getRoles() { return roles; }
     public void setRoles(Set<Role> roles) { this.roles = roles; }
     public LocalDateTime getCreatedAt() { return createdAt; }

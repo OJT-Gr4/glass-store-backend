@@ -24,6 +24,7 @@ public class LoginResponse {
     private boolean phoneVerified;
     private String employeeCode;
     private String branchName;
+    private String avatarUrl;
     private Set<String> roles;
     private String primaryRole;
     private String defaultRoute;

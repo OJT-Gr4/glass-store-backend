@@ -123,7 +123,7 @@ public final class ProductManagementDtos {
         @DecimalMin(value = "0.0", inclusive = true, message = "Giá vốn không được âm")
         private BigDecimal costPrice;
 
-        @Size(max = 500, message = "URL ảnh không được vượt quá 500 ký tự")
+        @Size(max = 600000, message = "URL hoặc dữ liệu ảnh không được vượt quá 600KB")
         private String imageUrl;
 
         private String status;
@@ -166,7 +166,7 @@ public final class ProductManagementDtos {
         @DecimalMin(value = "0.0", inclusive = true, message = "Giá vốn không được âm")
         private BigDecimal costPrice;
 
-        @Size(max = 500, message = "URL ảnh không được vượt quá 500 ký tự")
+        @Size(max = 600000, message = "URL hoặc dữ liệu ảnh không được vượt quá 600KB")
         private String imageUrl;
 
         private String status;

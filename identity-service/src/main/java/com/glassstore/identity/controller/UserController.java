@@ -55,6 +55,24 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success("Tạo nhân viên mới thành công", user));
     }
 
+    @PutMapping("/staff/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<UserDTO>> updateStaff(
+            @PathVariable("id") Long id,
+            @RequestBody UpdateStaffRequest request) {
+        UserDTO user = userService.updateStaff(id, request);
+        return ResponseEntity.ok(ApiResponse.success("Cập nhật thông tin nhân viên thành công", user));
+    }
+
+    @PutMapping("/{id}/avatar")
+    @PreAuthorize("hasRole('ADMIN') or #id == authentication.principal.id")
+    public ResponseEntity<ApiResponse<UserDTO>> updateUserAvatar(
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) UpdateAvatarRequest request) {
+        UserDTO user = userService.updateUserAvatar(id, request != null ? request.getAvatarUrl() : null);
+        return ResponseEntity.ok(ApiResponse.success("Cập nhật ảnh đại diện thành công", user));
+    }
+
     @PostMapping("/customers")
     @PreAuthorize("hasAnyRole('ADMIN','SALES_STAFF','OPTOMETRIST')")
     public ResponseEntity<ApiResponse<UserDTO>> createCustomer(@RequestBody CreateCustomerRequest request) {

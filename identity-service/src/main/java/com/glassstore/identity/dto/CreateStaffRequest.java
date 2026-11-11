@@ -15,4 +15,5 @@ public class CreateStaffRequest {
     private String roleName;
     private String status;
     private String password;
+    private String avatarUrl;
 }

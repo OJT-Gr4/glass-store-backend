@@ -44,6 +44,7 @@ public class DataInitializer implements CommandLineRunner {
                 .orElseGet(() -> roleRepository.save(Role.builder().name("ROLE_CUSTOMER").description("Khách hàng mua sắm đa kênh").build()));
 
         String defaultPassHash = passwordEncoder.encode("123456");
+        String defaultAvatar = com.glassstore.identity.service.impl.UserServiceImpl.DEFAULT_AVATAR_URL;
 
         // 2. Nội bộ (Admin, POS, Optometry, Lab)
         // 2.1 Admin
@@ -55,6 +56,7 @@ public class DataInitializer implements CommandLineRunner {
         admin.setEmployeeCode("ADM-001");
         admin.setBranchName("Trụ Sở Chính (HQ TP.HCM)");
         admin.setStatus("ACTIVE");
+        admin.setAvatarUrl(defaultAvatar);
         admin.setFailedAttempts(0);
         admin.setRoles(new HashSet<>(Collections.singletonList(adminRole)));
         userRepository.save(admin);
@@ -72,6 +74,7 @@ public class DataInitializer implements CommandLineRunner {
         pos.setEmployeeCode("NV-001");
         pos.setBranchName("Chi nhánh 01 - Lê Thánh Tôn, Quận 1");
         pos.setStatus("ACTIVE");
+        pos.setAvatarUrl(defaultAvatar);
         pos.setFailedAttempts(0);
         pos.setRoles(new HashSet<>(Collections.singletonList(staffRole)));
         userRepository.save(pos);
@@ -89,6 +92,7 @@ public class DataInitializer implements CommandLineRunner {
         optometry.setEmployeeCode("KTV-001");
         optometry.setBranchName("Phòng Khúc Xạ 01 - Lê Thánh Tôn, Quận 1");
         optometry.setStatus("ACTIVE");
+        optometry.setAvatarUrl(defaultAvatar);
         optometry.setFailedAttempts(0);
         optometry.setRoles(new HashSet<>(Collections.singletonList(optomRole)));
         userRepository.save(optometry);
@@ -106,6 +110,7 @@ public class DataInitializer implements CommandLineRunner {
         lab.setEmployeeCode("LAB-001");
         lab.setBranchName("Xưởng Gia Công Lab Kính - Chi nhánh Quận 1");
         lab.setStatus("ACTIVE");
+        lab.setAvatarUrl(defaultAvatar);
         lab.setFailedAttempts(0);
         lab.setRoles(new HashSet<>(Collections.singletonList(labRole)));
         userRepository.save(lab);
@@ -122,6 +127,7 @@ public class DataInitializer implements CommandLineRunner {
         cusDuy.setEmployeeCode("KH-VIP-001");
         cusDuy.setBranchName("120 Hai Bà Trưng, P. Đa Kao, Q.1, TP.HCM");
         cusDuy.setStatus("ACTIVE");
+        cusDuy.setAvatarUrl(defaultAvatar);
         cusDuy.setFailedAttempts(0);
         cusDuy.setRoles(new HashSet<>(Collections.singletonList(customerRole)));
         userRepository.save(cusDuy);
@@ -135,6 +141,7 @@ public class DataInitializer implements CommandLineRunner {
         cusTest.setFullName("Nguyễn Văn A");
         cusTest.setPhoneNumber("0912345678");
         cusTest.setStatus("ACTIVE");
+        cusTest.setAvatarUrl(defaultAvatar);
         cusTest.setFailedAttempts(0);
         cusTest.setRoles(new HashSet<>(Collections.singletonList(customerRole)));
         userRepository.save(cusTest);
