@@ -25,6 +25,7 @@ public class InventorySecurityConfig {
                 .requestMatchers(HttpMethod.GET,"/api/variants/**").hasAnyRole("SERVICE","ADMIN","SALES_STAFF","LAB_TECH","LAB")
                 .requestMatchers("/api/variants/adjust").hasAnyRole("ADMIN","LAB_TECH","LAB")
                 .requestMatchers("/api/variants/**").hasRole("SERVICE")
+                .requestMatchers(HttpMethod.GET,"/api/inventory/reconciliation").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET,"/api/inventory","/api/inventory/locations").hasAnyRole("ADMIN","LAB","LAB_TECH","SALES_STAFF")
                 .requestMatchers("/api/inventory/**").hasAnyRole("ADMIN","LAB","LAB_TECH")
                 .anyRequest().denyAll())

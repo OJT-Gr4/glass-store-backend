@@ -30,6 +30,7 @@ class LabAccessSecurityTest {
     @MockBean com.glassstore.lab.client.PrescriptionCustomerClient customerClient;
     @MockBean com.glassstore.lab.client.CatalogLocationClient locationClient;
     Prescription mine,other;
+    Warranty ownWarranty;
     Warranty otherWarranty;
     EyeExamAppointment otherAppointment;
     RequestPostProcessor role(String role) { return jwt().jwt(j -> j.subject("10").claim("userId",10L).claim("username","qa-doctor"))
@@ -43,6 +44,7 @@ class LabAccessSecurityTest {
             .pd(new BigDecimal("63")).build());
         other=prescriptions.saveAndFlush(Prescription.builder().customerId(20L).customerName("QA other").optometristId(1L).odSph(BigDecimal.ZERO).osSph(BigDecimal.ZERO).pd(new BigDecimal("63")).build());
         otherAppointment=appointments.saveAndFlush(EyeExamAppointment.builder().ticketCode("QA-OTHER").customerId(20L).customerName("QA other").status("WAITING").locationCode("BRANCH_01").build());
+        ownWarranty=warranties.saveAndFlush(Warranty.builder().warrantyCode("QA-WAR-SELF").customerId(10L).customerName("QA own").productName("QA frame").status("ACTIVE").techNote("Internal note").techName("Tech A").cost("150000").build());
         otherWarranty=warranties.saveAndFlush(Warranty.builder().warrantyCode("QA-WAR").customerId(20L).customerName("QA other").productName("QA frame").status("ACTIVE").build());
     }
     @Test void unauthenticatedReadsAreRejected() throws Exception {
@@ -56,7 +58,17 @@ class LabAccessSecurityTest {
         mvc.perform(get("/api/appointments/"+otherAppointment.getId()).with(role("CUSTOMER"))).andExpect(status().isForbidden());
         mvc.perform(get("/api/warranties/"+otherWarranty.getId()).with(role("CUSTOMER"))).andExpect(status().isForbidden());
         mvc.perform(get("/api/warranties/code/QA-WAR").with(role("CUSTOMER"))).andExpect(status().isForbidden());
-        mvc.perform(get("/api/warranties").with(role("CUSTOMER"))).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get("/api/warranties").with(role("CUSTOMER"))).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1));
+        mvc.perform(get("/api/warranties/"+ownWarranty.getId()).with(role("CUSTOMER"))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.techNote").doesNotExist())
+            .andExpect(jsonPath("$.cost").doesNotExist())
+            .andExpect(jsonPath("$.techName").doesNotExist());
+    }
+    @Test void customerCannotUpdateWarrantyStatusOrStaffNotes() throws Exception {
+        mvc.perform(patch("/api/warranties/"+ownWarranty.getId()+"/status").with(role("CUSTOMER"))
+            .contentType("application/json")
+            .content("{\"status\":\"REJECTED\",\"techNote\":\"Should not be allowed\"}"))
+            .andExpect(status().isForbidden());
     }
     @Test void clinicalAndLabMutationsAreSeparatedByRole() throws Exception {
         mvc.perform(post("/api/prescriptions").with(role("LAB_TECH")).contentType("application/json").content("{}"))

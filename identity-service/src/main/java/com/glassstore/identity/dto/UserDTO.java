@@ -21,6 +21,7 @@ public class UserDTO {
     private String status;
     private String address;
     private String gender;
+    private String avatarUrl;
     private boolean marketingConsent;
     private LocalDateTime marketingConsentUpdatedAt;
     private Set<String> roles;

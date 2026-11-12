@@ -37,6 +37,9 @@ public class StockTransfer {
     @Column(name = "created_by", length = 100)
     private String createdBy;
 
+    @Column(name = "dispatched_by", length = 100)
+    private String dispatchedBy;
+
     @Column(name = "received_by", length = 100)
     private String receivedBy;
 

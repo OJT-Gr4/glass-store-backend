@@ -92,7 +92,7 @@ public class ProductVariant {
         return Math.max(0, actual - reserved - broken);
     }
 
-    @Column(name = "image_url", length = 500)
+    @Column(name = "image_url", columnDefinition = "MEDIUMTEXT")
     private String imageUrl;
 
     @Column(length = 20)

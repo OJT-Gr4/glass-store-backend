@@ -27,6 +27,17 @@ import java.util.stream.Collectors;
 @Slf4j
 public class UserServiceImpl implements UserService {
 
+    public static final String DEFAULT_AVATAR_URL = "https://i.pinimg.com/236x/3e/f1/fc/3ef1fcc3b6cbb97199f961bb0b3ead3f.jpg";
+    private static final int MAX_URL_LENGTH = 1000;
+    private static final int MAX_DATA_URI_LENGTH = 600_000;
+    private static final Set<String> SAFE_DATA_IMAGE_PREFIXES = Set.of(
+            "data:image/png;base64,",
+            "data:image/jpeg;base64,",
+            "data:image/jpg;base64,",
+            "data:image/webp;base64,",
+            "data:image/gif;base64,"
+    );
+
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final CustomerInteractionRepository interactionRepository;
@@ -98,6 +109,7 @@ public class UserServiceImpl implements UserService {
                         ? request.getEmployeeCode()
                         : "STF-" + (new Random().nextInt(900) + 100))
                 .branchName(request.getBranchName() != null ? request.getBranchName() : "Flagship Q.1 (TP.HCM)")
+                .avatarUrl(validateAndResolveAvatar(request.getAvatarUrl()))
                 .status(userStatus)
                 .roles(new HashSet<>(Collections.singletonList(role)))
                 .build();
@@ -133,6 +145,7 @@ public class UserServiceImpl implements UserService {
                 .branchName(request.getAddress())
                 .address(request.getAddress())
                 .gender(request.getGender())
+                .avatarUrl(validateAndResolveAvatar(request.getAvatarUrl()))
                 .marketingConsent(consent)
                 .marketingConsentUpdatedAt(consentTime)
                 .status("ACTIVE")
@@ -177,6 +190,9 @@ public class UserServiceImpl implements UserService {
         if (request.getGender() != null) {
             user.setGender(request.getGender().trim());
         }
+        if (request.getAvatarUrl() != null) {
+            user.setAvatarUrl(validateAndResolveAvatar(request.getAvatarUrl()));
+        }
         if (request.getMarketingConsent() != null) {
             boolean newConsent = request.getMarketingConsent();
             if (user.isMarketingConsent() != newConsent) {
@@ -186,6 +202,53 @@ public class UserServiceImpl implements UserService {
             }
         }
 
+        return mapToDTO(userRepository.save(user));
+    }
+
+    @Override
+    @Transactional
+    public UserDTO updateUserAvatar(Long id, String avatarUrl) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Không tìm thấy người dùng với ID: " + id));
+        user.setAvatarUrl(validateAndResolveAvatar(avatarUrl));
+        return mapToDTO(userRepository.save(user));
+    }
+
+    @Override
+    @Transactional
+    public UserDTO updateStaff(Long id, UpdateStaffRequest request) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Không tìm thấy nhân viên với ID: " + id));
+        boolean isStaff = user.getRoles().stream().anyMatch(r -> !"ROLE_CUSTOMER".equals(r.getName()));
+        if (!isStaff) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Tài khoản không phải hồ sơ nhân viên");
+        }
+        if (request.getFullName() != null && !request.getFullName().isBlank()) {
+            user.setFullName(request.getFullName().trim());
+        }
+        if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
+            user.setPhoneNumber(request.getPhoneNumber().trim());
+        }
+        if (request.getBranchName() != null && !request.getBranchName().isBlank()) {
+            user.setBranchName(request.getBranchName().trim());
+        }
+        if (request.getRoleName() != null && !request.getRoleName().isBlank()) {
+            String roleName = request.getRoleName().trim();
+            if (!Set.of("ROLE_ADMIN", "ROLE_SALES_STAFF", "ROLE_OPTOMETRIST", "ROLE_LAB_TECH").contains(roleName)) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST, "Unsupported staff role");
+            }
+            Role role = roleRepository.findByName(roleName)
+                    .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                            org.springframework.http.HttpStatus.BAD_REQUEST, "Role không tồn tại"));
+            user.setRoles(new HashSet<>(Collections.singletonList(role)));
+        }
+        if (request.getAvatarUrl() != null) {
+            user.setAvatarUrl(validateAndResolveAvatar(request.getAvatarUrl()));
+        }
         return mapToDTO(userRepository.save(user));
     }
 
@@ -287,6 +350,7 @@ public class UserServiceImpl implements UserService {
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .fullName(request.getFullName() != null ? request.getFullName().trim() : "Khách Hàng")
                 .phoneNumber(request.getPhoneNumber() != null ? request.getPhoneNumber().trim() : null)
+                .avatarUrl(DEFAULT_AVATAR_URL)
                 .status("ACTIVE")
                 .roles(new HashSet<>(Collections.singletonList(customerRole)))
                 .build();
@@ -396,6 +460,7 @@ public class UserServiceImpl implements UserService {
                 .phoneVerified(user.isPhoneVerified())
                 .employeeCode(user.getEmployeeCode())
                 .branchName(user.getBranchName())
+                .avatarUrl(effectiveAvatar(user.getAvatarUrl()))
                 .roles(roleNames)
                 .primaryRole(primaryRole)
                 .defaultRoute(defaultRoute)
@@ -442,6 +507,7 @@ public class UserServiceImpl implements UserService {
                 .username(user.getUsername())
                 .fullName(user.getFullName())
                 .email(user.getEmail())
+                .avatarUrl(effectiveAvatar(user.getAvatarUrl()))
                 .roles(roleNames)
                 .primaryRole(roleNames.contains("ROLE_ADMIN") ? "ROLE_ADMIN" : "ROLE_CUSTOMER")
                 .build();
@@ -467,11 +533,69 @@ public class UserServiceImpl implements UserService {
                 .branchName(user.getBranchName())
                 .address(user.getAddress() != null ? user.getAddress() : user.getBranchName())
                 .gender(user.getGender())
+                .avatarUrl(effectiveAvatar(user.getAvatarUrl()))
                 .marketingConsent(user.isMarketingConsent())
                 .marketingConsentUpdatedAt(user.getMarketingConsentUpdatedAt())
                 .status(user.getStatus())
                 .roles(user.getRoles().stream().map(Role::getName).collect(Collectors.toSet()))
                 .createdAt(user.getCreatedAt())
                 .build();
+    }
+
+    private String effectiveAvatar(String stored) {
+        return (stored != null && !stored.isBlank()) ? stored : DEFAULT_AVATAR_URL;
+    }
+
+    private String validateAndResolveAvatar(String rawUrl) {
+        if (rawUrl == null || rawUrl.isBlank()) {
+            return DEFAULT_AVATAR_URL;
+        }
+        String trimmed = rawUrl.trim();
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("javascript:")
+                || lower.startsWith("vbscript:")
+                || lower.startsWith("file:")
+                || lower.contains("<script")
+                || lower.contains("</script")
+                || lower.contains("onerror=")
+                || lower.contains("onload=")
+                || lower.startsWith("data:image/svg")) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Ảnh đại diện chứa định dạng hoặc mã lệnh không an toàn.");
+        }
+        if (lower.startsWith("data:image/")) {
+            boolean safePrefix = SAFE_DATA_IMAGE_PREFIXES.stream().anyMatch(lower::startsWith);
+            if (!safePrefix) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "Chỉ hỗ trợ tải lên ảnh PNG, JPG, JPEG, WEBP hoặc GIF.");
+            }
+            if (trimmed.length() > MAX_DATA_URI_LENGTH) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "Dung lượng ảnh tải lên quá lớn (tối đa ~450KB sau nén).");
+            }
+            return trimmed;
+        }
+        if (trimmed.length() > MAX_URL_LENGTH) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "URL ảnh đại diện không được vượt quá 1000 ký tự.");
+        }
+        try {
+            java.net.URI uri = java.net.URI.create(trimmed);
+            String scheme = uri.getScheme();
+            if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "URL ảnh đại diện phải bắt đầu bằng http:// hoặc https://.");
+            }
+        } catch (IllegalArgumentException e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "URL ảnh đại diện không đúng định dạng.");
+        }
+        return trimmed;
     }
 }

@@ -55,6 +55,18 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("Lấy thông tin người dùng hiện tại thành công", user));
     }
 
+    @PutMapping("/me/avatar")
+    public ResponseEntity<ApiResponse<UserDTO>> updateMyAvatar(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestBody(required = false) UpdateAvatarRequest request) {
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error(HttpStatus.UNAUTHORIZED.value(), "Người dùng chưa được xác thực"));
+        }
+        UserDTO updated = userService.updateUserAvatar(principal.getId(), request != null ? request.getAvatarUrl() : null);
+        return ResponseEntity.ok(ApiResponse.success("Cập nhật ảnh đại diện thành công", updated));
+    }
+
     @PostMapping("/otp/send")
     public ResponseEntity<ApiResponse<OtpSendResponse>> sendOtp(@Valid @RequestBody OtpSendRequest request) {
         OtpSendResponse response = otpService.sendOtp(request);

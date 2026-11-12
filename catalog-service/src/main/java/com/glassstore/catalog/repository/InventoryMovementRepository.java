@@ -12,6 +12,8 @@ public interface InventoryMovementRepository extends JpaRepository<InventoryMove
     java.util.List<InventoryMovement> findAllByReferenceTypeAndReferenceId(
             String referenceType, String referenceId);
 
+    java.util.List<InventoryMovement> findAllByReferenceType(String referenceType);
+
     @Query("""
             select movement from InventoryMovement movement
             where (:sku is null or movement.sku = :sku)

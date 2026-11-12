@@ -40,6 +40,14 @@ if ($Mode -eq 'native' -and -not $CheckOnly) {
     }
 }
 
+if (-not $CheckOnly) {
+    $transferMigration = Join-Path $script:BackendRoot 'docker/mysql/migrations/20261110-glas-27-transfer-dispatch.sql'
+    if (Test-Path -LiteralPath $transferMigration) {
+        $sqlContent = [IO.File]::ReadAllText($transferMigration, [Text.Encoding]::UTF8)
+        Invoke-GlassStoreSql $sqlContent | Out-Null
+    }
+}
+
 $schemaCount=[int](Invoke-GlassStoreSql "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name IN ('db_identity','db_catalog','db_order','db_lab');")
 if ($schemaCount -ne 4) { throw 'Expected all four GlassStore schemas. Use setup on a fresh database or restore the approved dataset.' }
 $emptyCoreTables=[int](Invoke-GlassStoreSql "SELECT ((SELECT COUNT(*) FROM db_identity.users)=0)+((SELECT COUNT(*) FROM db_catalog.products)=0)+((SELECT COUNT(*) FROM db_catalog.product_variants)=0);")

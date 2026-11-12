@@ -34,7 +34,7 @@ public class GatewaySecurityConfig {
             .requestCache(c -> c.requestCache(NoOpServerRequestCache.getInstance()))
             .authorizeExchange(a -> a.pathMatchers(HttpMethod.OPTIONS,"/**").permitAll()
                 .pathMatchers("/internal/**","/api/variants/**","/api/lab-jobs/from-order","/api/lab-jobs/by-order/**","/api/warranties/activate").denyAll()
-                .pathMatchers("/api/auth/me","/api/v1/auth/me").authenticated()
+                .pathMatchers("/api/auth/me","/api/auth/me/**","/api/v1/auth/me","/api/v1/auth/me/**").authenticated()
                 .pathMatchers("/api/auth/**","/api/v1/auth/**","/api/payments/callback","/bank/api/**","/api/vietqr/**","/api/token_generate","/api/payments/sandbox/**","/api/payments/sepay/**","/api/payments/vietqr/**").permitAll()
                 .pathMatchers(HttpMethod.POST,"/api/payments/sepay/ipn").permitAll()
                 .pathMatchers(HttpMethod.GET,"/api/payments/sepay/configuration","/api/payments/sepay/config").permitAll()

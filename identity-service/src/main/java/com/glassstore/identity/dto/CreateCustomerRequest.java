@@ -14,4 +14,5 @@ public class CreateCustomerRequest {
     private String gender;
     private String tier;
     private Boolean marketingConsent;
+    private String avatarUrl;
 }

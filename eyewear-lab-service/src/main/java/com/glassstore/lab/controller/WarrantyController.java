@@ -151,6 +151,9 @@ public class WarrantyController {
     public ResponseEntity<Warranty> updateStatus(
             @PathVariable("id") Long id,
             @RequestBody Map<String, String> body) {
+        if (com.glassstore.common.security.CurrentActor.customer()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Khách hàng không được cập nhật trạng thái bảo hành");
+        }
         return warrantyRepository.findById(id).map(w -> {
             String previousStatus = w.getStatus();
             if (body.containsKey("status")) w.setStatus(body.get("status"));

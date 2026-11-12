@@ -16,6 +16,8 @@ public interface UserService {
 
     // Customer CRUD, consent & interaction history (S3-04)
     UserDTO updateCustomer(Long id, UpdateCustomerRequest request);
+    UserDTO updateUserAvatar(Long id, String avatarUrl);
+    UserDTO updateStaff(Long id, UpdateStaffRequest request);
     List<UserDTO> searchCustomers(String query);
     List<CustomerInteractionDTO> getCustomerInteractions(Long customerId);
     CustomerInteractionDTO addCustomerInteraction(Long customerId, Long staffId, String staffName, CreateInteractionRequest request);

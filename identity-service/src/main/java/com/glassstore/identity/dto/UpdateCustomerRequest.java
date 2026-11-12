@@ -13,4 +13,5 @@ public class UpdateCustomerRequest {
     private String address;
     private String gender;
     private Boolean marketingConsent;
+    private String avatarUrl;
 }
