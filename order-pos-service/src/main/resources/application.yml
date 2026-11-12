@@ -9,6 +9,7 @@ payment:
     secret-key: ${PAYMENT_SANDBOX_SECRET:GlassStoreSandboxSecretKey20261110!@#HMAC512}
   vietqr:
     bank-id: ${PAYMENT_VIETQR_BANK_ID:970422}
+    bank-name: ${PAYMENT_VIETQR_BANK_NAME:MBBank (Ngân Hàng Quân Đội)}
     account-no: ${PAYMENT_VIETQR_ACCOUNT_NO:0987654321}
     account-name: ${PAYMENT_VIETQR_ACCOUNT_NAME:OPTIVISION GLASS STORE}
     template: ${PAYMENT_VIETQR_TEMPLATE:compact2}
@@ -21,6 +22,7 @@ payment:
     merchant-id: ${SEPAY_MERCHANT_ID:SP-LIVE-PH25A899}
     secret-key: ${SEPAY_SECRET_KEY:spsk_live_nFh2X98U7y5kL4mP2vB6c1sW8zT3qR7v}
     ipn-secret: ${SEPAY_IPN_SECRET:spsk_live_nFh2X98U7y5kL4mP2vB6c1sW8zT3qR7v}
+    webhook-api-key: ${SEPAY_WEBHOOK_API_KEY:}
     return-base-url: ${SEPAY_RETURN_BASE_URL:http://localhost:5184}
 
 services:
@@ -68,6 +70,6 @@ vietqr:
     username: ${VIETQR_PARTNER_USERNAME:glassstore_pos}
     password: ${VIETQR_PARTNER_PASSWORD:GlassStore@VietQr2026}
     bank-code: ${VIETQR_BANK_CODE:MB}
-    bank-account: ${VIETQR_BANK_ACCOUNT:0938773607}
-    user-bank-name: ${VIETQR_USER_BANK_NAME:CONG TY KINH MAT OPTIVISION}
+    bank-account: ${VIETQR_BANK_ACCOUNT:${PAYMENT_VIETQR_ACCOUNT_NO:0938773607}}
+    user-bank-name: ${VIETQR_USER_BANK_NAME:${PAYMENT_VIETQR_ACCOUNT_NAME:CONG TY KINH MAT OPTIVISION}}
     token-secret: ${VIETQR_TOKEN_SECRET:GlassStoreVietQrSecretKey20261111!@#Token300sValidation}

@@ -50,6 +50,9 @@ public class ConfigurableSandboxPaymentGateway implements PaymentGateway {
     @Value("${payment.vietqr.bank-id:970422}")
     private String vietqrBankId;
 
+    @Value("${payment.vietqr.bank-name:MBBank (Ngân Hàng Quân Đội)}")
+    private String vietqrBankName = "MBBank (Ngân Hàng Quân Đội)";
+
     @Value("${payment.vietqr.account-no:0987654321}")
     private String vietqrAccountNo;
 
@@ -58,6 +61,16 @@ public class ConfigurableSandboxPaymentGateway implements PaymentGateway {
 
     @Value("${payment.vietqr.template:compact2}")
     private String vietqrTemplate;
+
+    public Map<String, String> getBankAccountInfo() {
+        Map<String, String> info = new LinkedHashMap<>();
+        info.put("bankId", vietqrBankId != null ? vietqrBankId : "970422");
+        info.put("bankName", vietqrBankName != null ? vietqrBankName : "MBBank (Ngân Hàng Quân Đội)");
+        info.put("accountNo", vietqrAccountNo != null ? vietqrAccountNo : "");
+        info.put("accountName", vietqrAccountName != null ? vietqrAccountName : "");
+        info.put("template", vietqrTemplate != null ? vietqrTemplate : "compact2");
+        return Collections.unmodifiableMap(info);
+    }
 
     @Value("${payment.vnpay.tmn-code:OPTIVIS1}")
     private String vnpayTmnCode;
@@ -102,20 +115,20 @@ public class ConfigurableSandboxPaymentGateway implements PaymentGateway {
 
         String externalTxnId = "TXN-SANDBOX-" + request.orderCode() + "-" + System.currentTimeMillis();
         long amountVnd = request.amount().setScale(0, RoundingMode.HALF_UP).longValue();
-        String description = request.description() != null ? request.description() : ("Thanh toan don " + request.orderCode());
+        String addInfo = request.orderCode();
 
         // VietQR QuickLink (https://img.vietqr.io/image/<BANK_ID>-<ACCOUNT_NO>-<TEMPLATE>.png)
-        String encodedDesc = URLEncoder.encode(description, StandardCharsets.UTF_8);
+        String encodedDesc = URLEncoder.encode(addInfo, StandardCharsets.UTF_8);
         String encodedAccName = URLEncoder.encode(vietqrAccountName, StandardCharsets.UTF_8);
         String vietqrUrl = String.format("https://img.vietqr.io/image/%s-%s-%s.png?amount=%d&addInfo=%s&accountName=%s",
                 vietqrBankId, vietqrAccountNo, vietqrTemplate, amountVnd, encodedDesc, encodedAccName);
-        String qrContent = com.glassstore.order.service.VietQrEmvcoUtil.generatePayload(vietqrBankId, vietqrAccountNo, request.amount(), request.orderCode());
+        String qrContent = com.glassstore.order.service.VietQrEmvcoUtil.generatePayload(vietqrBankId, vietqrAccountNo, request.amount(), addInfo);
 
-        // VNPay Sandbox Payment URL
-        String vnpayPaymentUrl = buildVnpayPaymentUrl(request.orderCode(), amountVnd, description);
+        Map<String, String> bankMeta = new LinkedHashMap<>(getBankAccountInfo());
+        bankMeta.put("addInfo", addInfo);
 
         log.info("Payment initiated for order {} with externalTxnId {}", request.orderCode(), externalTxnId);
-        return new InitiationResult("SANDBOX_GATEWAY", externalTxnId, vietqrUrl, qrContent, true);
+        return new InitiationResult("SANDBOX_GATEWAY", externalTxnId, vietqrUrl, qrContent, true, "GET", bankMeta);
     }
 
     @Override

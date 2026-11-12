@@ -14,5 +14,6 @@ public class SePayProperties {
     private String merchantId = "";
     private String secretKey = "";
     private String ipnSecret = "";
+    private String webhookApiKey = "";
     private String returnBaseUrl = "";
 }
