@@ -50,14 +50,14 @@ public class ConfigurableSandboxPaymentGateway implements PaymentGateway {
     @Value("${payment.vietqr.bank-id:970422}")
     private String vietqrBankId;
 
-    @Value("${payment.vietqr.bank-name:MBBank (Ngân Hàng Quân Đội)}")
-    private String vietqrBankName = "MBBank (Ngân Hàng Quân Đội)";
+    @Value("${payment.vietqr.bank-name:MBBank}")
+    private String vietqrBankName = "MBBank";
 
-    @Value("${payment.vietqr.account-no:0987654321}")
-    private String vietqrAccountNo;
+    @Value("${payment.vietqr.account-no:3906122006}")
+    private String vietqrAccountNo = "3906122006";
 
-    @Value("${payment.vietqr.account-name:OPTIVISION GLASS STORE}")
-    private String vietqrAccountName;
+    @Value("${payment.vietqr.account-name:TRAN HUU TRUNG PHONG}")
+    private String vietqrAccountName = "TRAN HUU TRUNG PHONG";
 
     @Value("${payment.vietqr.template:compact2}")
     private String vietqrTemplate;

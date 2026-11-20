@@ -4,6 +4,7 @@ import com.glassstore.lab.client.IdentityNotificationClient;
 import com.glassstore.lab.dto.NotificationEventPayload;
 import com.glassstore.lab.entity.EyeExamAppointment;
 import com.glassstore.lab.entity.LabJob;
+import com.glassstore.lab.entity.Warranty;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -163,6 +164,78 @@ public class LabNotificationPublisher {
                 .customerId(appt.getCustomerId())
                 .explicitUserIds(explicitUsers)
                 .targetRoles(targetRoles)
+                .build();
+
+        sendSafely(payload);
+    }
+
+    public void publishWarrantyClaimCreated(Warranty warranty) {
+        if (warranty == null || warranty.getId() == null) {
+            return;
+        }
+        String code = firstNonBlank(warranty.getWarrantyCode(), "WAR-" + warranty.getId());
+        String product = firstNonBlank(warranty.getProductName(), "Sản phẩm kính mắt");
+        String customer = firstNonBlank(warranty.getCustomerName(), "Khách hàng");
+        String phone = firstNonBlank(warranty.getCustomerPhone(), "-");
+        String issue = firstNonBlank(warranty.getIssueDescription(), "");
+
+        String customerTitle = "Đã tiếp nhận yêu cầu bảo hành (" + code + ")";
+        String customerMessage = "Yêu cầu hậu mãi cho " + product
+                + " đã được ghi nhận ở trạng thái Chờ tiếp nhận.";
+        String staffTitle = "Yêu cầu bảo hành mới (" + code + ")";
+        String staffMessage = "Khách hàng " + customer + " (" + phone + ") gửi yêu cầu cho "
+                + product + (issue.isBlank() ? "." : " · Mô tả: " + issue);
+
+        NotificationEventPayload payload = NotificationEventPayload.builder()
+                .eventKey("WARRANTY_CLAIM:" + warranty.getId())
+                .eventType("WARRANTY_CLAIM_CREATED")
+                .category("WARRANTY")
+                .referenceType("WARRANTY")
+                .referenceId(warranty.getId())
+                .referenceCode(code)
+                .title(customerTitle)
+                .message(customerMessage)
+                .customerTitle(customerTitle)
+                .customerMessage(customerMessage)
+                .staffTitle(staffTitle)
+                .staffMessage(staffMessage)
+                .actionTab("warranty")
+                .actionRoute("/warranty")
+                .sourceService("eyewear-lab-service")
+                .customerId(warranty.getCustomerId())
+                .targetRoles(List.of("ROLE_SALES_STAFF", "ROLE_ADMIN"))
+                .build();
+
+        sendSafely(payload);
+    }
+
+    public void publishWarrantyStatusUpdated(Warranty warranty) {
+        if (warranty == null || warranty.getId() == null || warranty.getCustomerId() == null) {
+            return;
+        }
+        String code = firstNonBlank(warranty.getWarrantyCode(), "WAR-" + warranty.getId());
+        String status = firstNonBlank(warranty.getStatus(), "UPDATED");
+        String statusLabel = firstNonBlank(warranty.getStatusLabel(), status);
+        String product = firstNonBlank(warranty.getProductName(), "Sản phẩm kính mắt");
+
+        String customerTitle = "Cập nhật bảo hành (" + code + "): " + statusLabel;
+        String customerMessage = "Yêu cầu bảo hành cho " + product + " đã chuyển sang trạng thái: " + statusLabel + ".";
+
+        NotificationEventPayload payload = NotificationEventPayload.builder()
+                .eventKey("WARRANTY_STATUS:" + warranty.getId() + ":" + status + ":" + System.currentTimeMillis())
+                .eventType("WARRANTY_STATUS_UPDATED")
+                .category("WARRANTY")
+                .referenceType("WARRANTY")
+                .referenceId(warranty.getId())
+                .referenceCode(code)
+                .title(customerTitle)
+                .message(customerMessage)
+                .customerTitle(customerTitle)
+                .customerMessage(customerMessage)
+                .actionTab("warranty")
+                .actionRoute("/warranty")
+                .sourceService("eyewear-lab-service")
+                .customerId(warranty.getCustomerId())
                 .build();
 
         sendSafely(payload);

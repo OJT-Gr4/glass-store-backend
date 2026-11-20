@@ -120,15 +120,16 @@ public class RepairServiceWorkflow {
         RepairService service = repairRepository.findById(id)
                 .orElseThrow(() -> ApiException.of(ErrorCode.NOT_FOUND, "Không tìm thấy phiếu tiếp nhận"));
         String previous = service.getStatus();
-        boolean validTransition = ("RECEIVED".equals(previous) && "IN_PROGRESS".equals(newStatus))
-                || ("IN_PROGRESS".equals(previous) && "READY_FOR_PICKUP".equals(newStatus));
+        boolean validTransition = ("RECEIVED".equals(previous) && Set.of("IN_PROGRESS", "READY_FOR_PICKUP", "COMPLETED").contains(newStatus))
+                || ("IN_PROGRESS".equals(previous) && Set.of("READY_FOR_PICKUP", "COMPLETED").contains(newStatus))
+                || ("READY_FOR_PICKUP".equals(previous) && "COMPLETED".equals(newStatus));
         if (!validTransition) {
             throw ApiException.of(ErrorCode.REPAIR_SERVICE_INVALID_TRANSITION,
                     "Không thể chuyển trạng thái từ " + previous + " sang " + newStatus);
         }
         LocalDateTime now = LocalDateTime.now();
         service.setStatus(newStatus);
-        if ("READY_FOR_PICKUP".equals(newStatus)) {
+        if ("READY_FOR_PICKUP".equals(newStatus) || "COMPLETED".equals(newStatus)) {
             service.setCompletedAt(now);
         }
         repairRepository.save(service);
@@ -192,7 +193,7 @@ public class RepairServiceWorkflow {
             return null;
         }
         String normalized = status.trim().toUpperCase();
-        if (!Set.of("RECEIVED", "IN_PROGRESS", "READY_FOR_PICKUP").contains(normalized)) {
+        if (!Set.of("RECEIVED", "IN_PROGRESS", "READY_FOR_PICKUP", "COMPLETED").contains(normalized)) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Trạng thái phiếu sửa chữa không hợp lệ");
         }
         return normalized;

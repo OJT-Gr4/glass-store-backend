@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class UserServiceImpl implements UserService {
 
-    public static final String DEFAULT_AVATAR_URL = "https://i.pinimg.com/236x/3e/f1/fc/3ef1fcc3b6cbb97199f961bb0b3ead3f.jpg";
+    public static final String DEFAULT_AVATAR_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQJAy3MrvYrmubxOdwfv33LI41s2yC06qjU4-qkqMyF4w&s";
     private static final int MAX_URL_LENGTH = 1000;
     private static final int MAX_DATA_URI_LENGTH = 600_000;
     private static final Set<String> SAFE_DATA_IMAGE_PREFIXES = Set.of(
@@ -425,8 +425,10 @@ public class UserServiceImpl implements UserService {
         }
 
         // 5. Cấp phát JWT Access Token (24h) và Refresh Token (7 ngày)
-        String accessToken = jwtTokenProvider.generateAccessToken(user);
-        String refreshToken = jwtTokenProvider.generateRefreshToken(user);
+        boolean staff=user.getRoles().stream().anyMatch(r->Set.of("ROLE_ADMIN","ROLE_SALES_STAFF","ROLE_OPTOMETRIST","ROLE_LAB_TECH").contains(r.getName()));
+        var workBranch=staff?com.glassstore.identity.security.WorkBranch.resolve(request.getBranchCode(),user.getBranchName()):null;
+        String accessToken = staff?jwtTokenProvider.generateAccessToken(user,workBranch):jwtTokenProvider.generateAccessToken(user);
+        String refreshToken = staff?jwtTokenProvider.generateRefreshToken(user,workBranch):jwtTokenProvider.generateRefreshToken(user);
 
         Set<String> roleNames = user.getRoles().stream().map(Role::getName).collect(Collectors.toSet());
         String primaryRole = "ROLE_CUSTOMER";
@@ -459,7 +461,8 @@ public class UserServiceImpl implements UserService {
                 .phoneNumber(user.getPhoneNumber())
                 .phoneVerified(user.isPhoneVerified())
                 .employeeCode(user.getEmployeeCode())
-                .branchName(user.getBranchName())
+                .branchName(workBranch==null?user.getBranchName():workBranch.name())
+                .branchCode(workBranch==null?null:workBranch.code())
                 .avatarUrl(effectiveAvatar(user.getAvatarUrl()))
                 .roles(roleNames)
                 .primaryRole(primaryRole)
@@ -492,13 +495,17 @@ public class UserServiceImpl implements UserService {
             throw new com.glassstore.identity.exception.AccountLockedException("Tài khoản đang bị tạm khóa!");
         }
 
-        String newAccessToken = jwtTokenProvider.generateAccessToken(user);
-        String newRefreshToken = jwtTokenProvider.generateRefreshToken(user);
+        String branchCode=jwtTokenProvider.getClaimsFromToken(refreshToken).get("branchCode",String.class);
+        var workBranch=branchCode==null?null:com.glassstore.identity.security.WorkBranch.resolve(branchCode,null);
+        String newAccessToken = workBranch==null?jwtTokenProvider.generateAccessToken(user):jwtTokenProvider.generateAccessToken(user,workBranch);
+        String newRefreshToken = workBranch==null?jwtTokenProvider.generateRefreshToken(user):jwtTokenProvider.generateRefreshToken(user,workBranch);
 
         Set<String> roleNames = user.getRoles().stream().map(Role::getName).collect(Collectors.toSet());
 
         return LoginResponse.builder()
                 .token(newAccessToken)
+                .branchCode(workBranch==null?null:workBranch.code())
+                .branchName(workBranch==null?null:workBranch.name())
                 .refreshToken(newRefreshToken)
                 .tokenType("Bearer")
                 .expiresIn(86400)

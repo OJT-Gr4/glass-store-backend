@@ -23,6 +23,7 @@ public class VoucherService {
 
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
     private static final BigDecimal HUNDRED = new BigDecimal("100");
+    static final BigDecimal MAX_DISCOUNT = new BigDecimal("5000000");
 
     private final VoucherRepository voucherRepository;
 
@@ -31,6 +32,11 @@ public class VoucherService {
     }
 
     public Voucher createVoucher(Voucher voucher) {
+        validate(voucher);
+        voucher.setId(null);
+        voucher.setUsedCount(0);
+        voucher.setPerCustomerLimit(1);
+        voucher.setRequiredTier(validateTier(voucher.getRequiredTier()));
         if (voucher.getCode() == null || voucher.getCode().isBlank()) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Mã giảm giá không được để trống");
         }
@@ -53,6 +59,7 @@ public class VoucherService {
                 .orElseThrow(() -> ApiException.of(ErrorCode.VOUCHER_NOT_FOUND, "Không tìm thấy voucher ID " + id));
 
         if (updated.getName() != null) existing.setName(updated.getName());
+        if (updated.getRequiredTier() != null) existing.setRequiredTier(validateTier(updated.getRequiredTier()));
         if (updated.getDiscountType() != null) existing.setDiscountType(updated.getDiscountType());
         if (updated.getDiscountValue() != null) existing.setDiscountValue(updated.getDiscountValue());
         if (updated.getMinOrderAmount() != null) existing.setMinOrderAmount(updated.getMinOrderAmount());
@@ -61,8 +68,36 @@ public class VoucherService {
         if (updated.getValidTo() != null) existing.setValidTo(updated.getValidTo());
         if (updated.getChannel() != null) existing.setChannel(updated.getChannel());
         existing.setActive(updated.isActive());
+        existing.setPerCustomerLimit(1);
+        existing.setUsageLimit(updated.getUsageLimit());
+        validate(existing);
 
         return voucherRepository.save(existing);
+    }
+
+    private String validateTier(String tier) {
+        String normalized = tier == null ? "NONE" : tier.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!java.util.Set.of("NONE", "SILVER", "GOLD", "DIAMOND").contains(normalized)) {
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Hạng voucher không hợp lệ");
+        }
+        return normalized;
+    }
+
+    private void validate(Voucher voucher) {
+        if ("FIXED".equals(voucher.getDiscountType()) && voucher.getDiscountValue() != null && voucher.getDiscountValue().compareTo(MAX_DISCOUNT) > 0
+                || voucher.getMaxDiscountAmount() != null && voucher.getMaxDiscountAmount().compareTo(MAX_DISCOUNT) > 0)
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Mức giảm voucher tối đa là 5.000.000đ.");
+        if (voucher.getName() == null || voucher.getName().isBlank() || voucher.getName().length() > 160
+                || voucher.getCode() == null || !voucher.getCode().trim().matches("[A-Za-z0-9_-]{3,50}")
+                || voucher.getDiscountValue() == null || voucher.getDiscountValue().signum() <= 0
+                || !java.util.Set.of("PERCENT", "FIXED").contains(voucher.getDiscountType() == null ? "" : voucher.getDiscountType())
+                || "PERCENT".equals(voucher.getDiscountType()) && voucher.getDiscountValue().compareTo(HUNDRED) > 0
+                || voucher.getMinOrderAmount() != null && voucher.getMinOrderAmount().signum() < 0
+                || voucher.getMaxDiscountAmount() != null && voucher.getMaxDiscountAmount().signum() < 0
+                || voucher.getUsageLimit() != null && voucher.getUsageLimit() < 1
+                || voucher.getValidFrom() != null && voucher.getValidTo() != null && !voucher.getValidFrom().isBefore(voucher.getValidTo())
+                || voucher.getChannel() != null && !java.util.Set.of("ALL", "POS", "ONLINE").contains(voucher.getChannel()))
+            throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Thông tin voucher không hợp lệ. Kiểm tra mã, mức giảm, thời hạn và kênh áp dụng.");
     }
 
     public Voucher toggleActive(Long id) {
@@ -76,7 +111,9 @@ public class VoucherService {
         if (!voucherRepository.existsById(id)) {
             throw ApiException.of(ErrorCode.VOUCHER_NOT_FOUND, "Không tìm thấy voucher ID " + id);
         }
-        voucherRepository.deleteById(id);
+        Voucher existing = voucherRepository.findById(id).orElseThrow();
+        existing.setActive(false);
+        voucherRepository.save(existing);
     }
 
     public BigDecimal calculateDiscount(String voucherCode, BigDecimal total, SalesChannel channel) {
@@ -125,6 +162,8 @@ public class VoucherService {
 
         BigDecimal raw;
         if ("PERCENT".equalsIgnoreCase(voucher.getDiscountType())) {
+            if(voucher.getDiscountValue().compareTo(HUNDRED)>0)
+                throw ApiException.of(ErrorCode.VOUCHER_NOT_APPLICABLE,"Voucher phần trăm không được giảm quá 100%.");
             raw = orderTotal.multiply(voucher.getDiscountValue())
                     .divide(HUNDRED, 2, RoundingMode.HALF_UP);
         } else if ("FIXED".equalsIgnoreCase(voucher.getDiscountType())) {
@@ -139,6 +178,7 @@ public class VoucherService {
         if (raw.compareTo(orderTotal) > 0) {
             raw = orderTotal;
         }
+        raw = raw.min(MAX_DISCOUNT);
         return raw.max(ZERO).setScale(2, RoundingMode.HALF_UP);
     }
 }

@@ -46,6 +46,9 @@ public class OmsWorkflowService {
         try { target = OrderStatus.parse(request.getStatus()); }
         catch (IllegalArgumentException error) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, error.getMessage()); }
         OrderStateMachine.requireTransition(order.currentStatus(), target);
+        if (order.getOrderType() != null && order.getOrderType().requiresPrescription() && order.getLabConfirmedAt() == null
+                && Set.of(OrderStatus.PREPARING, OrderStatus.SHIPPING, OrderStatus.READY_FOR_PICKUP, OrderStatus.COMPLETED).contains(target))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Đơn kính thuốc cần nhân viên POS xác nhận trước khi chuyển Lab hoặc bàn giao.");
         if (Set.of(OrderStatus.CANCELLED,OrderStatus.CANCEL_PENDING,OrderStatus.CANCEL_REQUESTED,
                 OrderStatus.REFUND_PENDING,OrderStatus.REFUNDED).contains(target))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Use the cancellation/refund workflow so stock and payment are reconciled");

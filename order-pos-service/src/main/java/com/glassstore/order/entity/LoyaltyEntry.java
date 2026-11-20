@@ -12,5 +12,10 @@ public class LoyaltyEntry {
  private long points;
  private String reason;
  private LocalDateTime createdAt=LocalDateTime.now();
+ @Column(name="event_key",unique=true,length=160) private String eventKey;
+ private LocalDateTime cycleAt;
+ private String noticeStatus;
+ private LocalDateTime notificationSentAt;
+ @Column(nullable=false) private boolean voided=false;
 }
 

@@ -40,6 +40,7 @@ public class OtpServiceImpl implements OtpService {
     private final OtpChallengeRepository otpChallengeRepository;
     private final PasswordEncoder passwordEncoder;
     private final SmsGateway smsGateway;
+    private final com.glassstore.identity.service.EmailOtpSender emailOtpSender;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${otp.expiration-seconds:300}")
@@ -71,16 +72,31 @@ public class OtpServiceImpl implements OtpService {
             throw new ResponseStatusException(HttpStatus.LOCKED, "Tài khoản đang bị tạm khóa hoặc ngừng hoạt động");
         }
 
+        String targetEmail = user.getEmail();
+        if ((targetEmail == null || targetEmail.isBlank()) && request.getEmail() != null && !request.getEmail().isBlank()) {
+            targetEmail = request.getEmail().trim();
+        }
+
+        boolean isPhoneVerification = PURPOSE_PHONE_VERIFICATION.equalsIgnoreCase(purpose);
+
         String normalizedUserPhone = normalizePhone(user.getPhoneNumber());
         if (normalizedUserPhone == null || normalizedUserPhone.isBlank()) {
+            normalizedUserPhone = normalizePhone(request.getPhoneNumber());
+        }
+
+        if (isPhoneVerification && (normalizedUserPhone == null || normalizedUserPhone.isBlank())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tài khoản chưa đăng ký số điện thoại nhận OTP");
         }
 
-        if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
+        if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank() && normalizedUserPhone != null) {
             String requestedPhone = normalizePhone(request.getPhoneNumber());
             if (!normalizedUserPhone.equals(requestedPhone)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số điện thoại không khớp với tài khoản đã đăng ký");
             }
+        }
+
+        if (!isPhoneVerification && (targetEmail == null || targetEmail.isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tài khoản chưa đăng ký email để nhận mã OTP");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -110,13 +126,21 @@ public class OtpServiceImpl implements OtpService {
         int ttlSeconds = Math.max(30, otpExpirationSeconds);
         LocalDateTime expiresAt = now.plusSeconds(ttlSeconds);
 
-        // Send via external SMS gateway first (throws 503 if unconfigured)
-        smsGateway.sendOtp(normalizedUserPhone, rawOtp, purpose, expiresAt);
+        // Send via external SMS gateway if phone available
+        if (normalizedUserPhone != null && !normalizedUserPhone.isBlank()) {
+            smsGateway.sendOtp(normalizedUserPhone, rawOtp, purpose, expiresAt);
+        }
+
+        // Send via Gmail SMTP Email OTP
+        if (targetEmail != null && !targetEmail.isBlank()) {
+            emailOtpSender.sendOtpEmail(targetEmail, user.getFullName(), rawOtp, purpose, expiresAt);
+        }
 
         OtpChallenge challenge = new OtpChallenge();
         challenge.setChallengeCode(UUID.randomUUID().toString());
         challenge.setUserId(user.getId());
-        challenge.setPhoneNumber(normalizedUserPhone);
+        challenge.setEmail(targetEmail);
+        challenge.setPhoneNumber(normalizedUserPhone != null ? normalizedUserPhone : "");
         challenge.setPurpose(purpose);
         challenge.setCodeHash(passwordEncoder.encode(rawOtp));
         challenge.setExpiresAt(expiresAt);
@@ -124,14 +148,18 @@ public class OtpServiceImpl implements OtpService {
         challenge.setMaxAttempts(Math.max(1, maxAttempts));
         otpChallengeRepository.save(challenge);
 
+        String maskedEmail = maskEmail(targetEmail);
         String masked = maskPhone(normalizedUserPhone);
-        log.info("Đã khởi tạo phiên OTP [purpose={}, challengeId={}, userId={}, phone={}]",
-                purpose, challenge.getChallengeCode(), user.getId(), masked);
+        String channel = (targetEmail != null && !targetEmail.isBlank()) ? "EMAIL" : "SMS";
+        log.info("Đã khởi tạo phiên OTP [purpose={}, challengeId={}, userId={}, channel={}, email={}, phone={}]",
+                purpose, challenge.getChallengeCode(), user.getId(), channel, maskedEmail, masked);
 
         return OtpSendResponse.builder()
                 .challengeId(challenge.getChallengeCode())
                 .purpose(purpose)
+                .maskedEmail(maskedEmail)
                 .maskedPhone(masked)
+                .deliveryChannel(channel)
                 .expiresInSeconds(ttlSeconds)
                 .expiresAt(expiresAt)
                 .maxAttempts(challenge.getMaxAttempts())
@@ -160,6 +188,7 @@ public class OtpServiceImpl implements OtpService {
                 .userId(user.getId())
                 .purpose(PURPOSE_PHONE_VERIFICATION)
                 .maskedPhone(maskPhone(challenge.getPhoneNumber()))
+                .maskedEmail(maskEmail(challenge.getEmail() != null ? challenge.getEmail() : user.getEmail()))
                 .phoneVerified(true)
                 .verifiedAt(challenge.getConsumedAt())
                 .build();
@@ -201,6 +230,7 @@ public class OtpServiceImpl implements OtpService {
                 .userId(user.getId())
                 .purpose(PURPOSE_PASSWORD_RESET)
                 .maskedPhone(maskPhone(challenge.getPhoneNumber()))
+                .maskedEmail(maskEmail(challenge.getEmail() != null ? challenge.getEmail() : user.getEmail()))
                 .phoneVerified(user.isPhoneVerified())
                 .verifiedAt(challenge.getConsumedAt())
                 .build();
@@ -301,6 +331,23 @@ public class OtpServiceImpl implements OtpService {
         int visibleDigits = Math.min(4, phone.length());
         String tail = phone.substring(phone.length() - visibleDigits);
         return "*".repeat(Math.max(4, phone.length() - visibleDigits)) + tail;
+    }
+
+    public static String maskEmail(String email) {
+        if (email == null || !email.contains("@")) {
+            return "****";
+        }
+        String[] parts = email.split("@", 2);
+        String name = parts[0];
+        String domain = parts[1];
+        if (name.length() <= 2) {
+            return name.charAt(0) + "***@" + domain;
+        }
+        int keepStart = Math.min(2, name.length());
+        int keepEnd = Math.min(2, Math.max(0, name.length() - keepStart));
+        String start = name.substring(0, keepStart);
+        String end = keepEnd > 0 ? name.substring(name.length() - keepEnd) : "";
+        return start + "***" + end + "@" + domain;
     }
 }
 

@@ -74,6 +74,15 @@ class CustomerConsentAndInteractionsTest {
         assertThat(dto.getMarketingConsentUpdatedAt()).isNull();
         assertThat(dto.getAddress()).isEqualTo("123 Le Loi, Q.1");
         assertThat(dto.getGender()).isEqualTo("MALE");
+        assertThat(dto.getAvatarUrl()).isEqualTo(UserServiceImpl.DEFAULT_AVATAR_URL);
+    }
+
+    @Test void creatingCustomerPreservesTheirOwnAvatar() {
+        CreateCustomerRequest req = new CreateCustomerRequest();
+        req.setFullName("Avatar owner"); req.setPhoneNumber("0901234567");
+        req.setAvatarUrl("https://example.com/my-photo.jpg");
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        assertThat(userService.createCustomer(req).getAvatarUrl()).isEqualTo("https://example.com/my-photo.jpg");
     }
 
     @Test

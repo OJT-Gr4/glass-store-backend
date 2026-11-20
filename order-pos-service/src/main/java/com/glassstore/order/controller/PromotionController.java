@@ -18,18 +18,29 @@ public class PromotionController {
     private final LoyaltyAccountRepository accounts;
     private final LoyaltyEntryRepository entries;
     private final VoucherRepository vouchers;
+    private final LoyaltyLifecycleService lifecycle;
     @ExceptionHandler(ResponseStatusException.class)
     public org.springframework.http.ResponseEntity<Map<String,String>> error(ResponseStatusException error) { return org.springframework.http.ResponseEntity.status(error.getStatusCode()).body(Map.of("message",error.getReason()==null?"Yêu cầu không hợp lệ.":error.getReason())); }
     @PostMapping("/api/promotions/apply")
     public PromotionService.Quote apply(@RequestBody Order order,@RequestHeader(value="Authorization",required=false) String token) { return promotions.calculate(order,token,false); }
     @GetMapping("/api/loyalty/accounts/{id}")
     public Map<String,Object> account(@PathVariable("id") Long id,@RequestHeader(value="Authorization",required=false) String token) {
-        data.actor(token,false); data.customer(token,id);
-        long balance = accounts.findById(id).map(LoyaltyAccount::getBalance).orElse(0L);
+        if (com.glassstore.common.security.CurrentActor.customer()) {
+            com.glassstore.common.security.CurrentActor.requireOwner(id);
+        } else {
+            data.actor(token,false);
+            data.customer(token,id);
+        }
+        LoyaltyAccount account=lifecycle.current(id);
+        long balance = account.getBalance();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("customerId", id);
         result.put("balance", balance);
-        result.put("tier", policy.resolveTier(balance));
+        result.put("tier", Map.of("MEMBER","Thành Viên","SILVER","Hạng Bạc","GOLD","Hạng Vàng","DIAMOND","Hạng Kim Cương").get(account.getTierCode()));
+        result.put("tierCode",account.getTierCode());result.put("tierPoints",account.getTierPoints());
+        result.put("tierProtectedUntil",account.getTierProtectedUntil());result.put("lastActivityAt",account.getLastActivityAt());
+        result.put("protectionStartedAt",account.getProtectionStartedAt());result.put("nextDecayAt",account.getBalance()>0?account.getNextDecayAt():null);
+        result.put("nextDecayPoints",LoyaltyLifecycleService.decay(balance));result.put("graceMonths",6);result.put("decayPercent",5);result.put("reminderDays",15);
         result.put("pointValue", policy.getPointValue());
         result.put("earnUnitAmount", policy.getEarnUnitAmount());
         result.put("earnEnabled", policy.isEarnEnabled());
@@ -44,7 +55,7 @@ public class PromotionController {
     public LoyaltyAccount adjust(@PathVariable("id") Long id,@RequestBody Adjustment request,@RequestHeader(value="Authorization",required=false) String token) {
         data.actor(token,true); data.customer(token,id);
         if(request.points()==0 || request.reason()==null || request.reason().isBlank() || request.reason().length()>255) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Nhập số điểm và lý do điều chỉnh.");
-        LoyaltyAccount account=accounts.lockByCustomerId(id).orElseGet(()->{LoyaltyAccount created=new LoyaltyAccount();created.setCustomerId(id);return accounts.saveAndFlush(created);});
+        LoyaltyAccount account=lifecycle.current(id);
         long balance=Math.addExact(account.getBalance(),request.points()); if(balance<0)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Không được để số dư âm.");
         account.setBalance(balance);accounts.save(account);LoyaltyEntry entry=new LoyaltyEntry();entry.setCustomerId(id);entry.setEntryType("ADMIN_ADJUST");entry.setPoints(request.points());entry.setReason(request.reason());entries.save(entry);return account;
     }

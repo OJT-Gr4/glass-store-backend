@@ -61,6 +61,9 @@ public class Voucher {
 
     @Builder.Default
     private boolean membersOnly = false;
+    @Column(name = "required_tier", nullable = false, length = 16)
+    @Builder.Default
+    private String requiredTier = "NONE";
     @Builder.Default
     private boolean stackPoints = true;
     private Integer usageLimit;

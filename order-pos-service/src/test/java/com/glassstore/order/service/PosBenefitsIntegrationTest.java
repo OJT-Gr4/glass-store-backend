@@ -25,6 +25,7 @@ class PosBenefitsIntegrationTest {
     @Autowired LoyaltyPolicy loyaltyPolicy;
     @Autowired OrderCancellationService cancellations;
     @Autowired VoucherRepository vouchers;
+    @Autowired VoucherGrantRepository grants;
     @Autowired LoyaltyAccountRepository accounts;
     @Autowired LoyaltyEntryRepository entries;
     @Autowired PaymentRepository payments;
@@ -45,11 +46,21 @@ class PosBenefitsIntegrationTest {
         when(data.catalogItems()).thenReturn(Map.of("TEST-SKU", new PosDataService.CatalogItem(new BigDecimal("1000000"), "Catalog lens", "LENS", true),
                 "FRAME-SKU", new PosDataService.CatalogItem(new BigDecimal("500000"), "Catalog frame", "FRAME", true)));
         Voucher v=new Voucher();v.setCode("QA10");v.setName("QA voucher");v.setType("PERCENT");v.setAmount(new BigDecimal("10"));v.setMinimumAmount(new BigDecimal("500000"));v.setMaximumDiscount(new BigDecimal("100000"));v.setUsageLimit(1);v.setExpiresAt(LocalDateTime.now().plusDays(1));vouchers.save(v);
+        VoucherGrant grant = new VoucherGrant(); grant.setVoucherId(v.getId()); grant.setCustomerId(10L); grants.save(grant);
         LoyaltyAccount account=new LoyaltyAccount();account.setCustomerId(10L);account.setBalance(100);accounts.save(account);
     }
     private Order order() {
         return Order.builder().channel(SalesChannel.POS).orderType(OrderType.ACCESSORY).branchCode("BRANCH_01").customerId(10L).customerName("QA").customerPhone("").paymentMethod(PaymentMethod.CASH)
             .items(new ArrayList<>(List.of(OrderItem.builder().skuId("TEST-SKU").productName("Test glasses").quantity(1).unitPrice(new BigDecimal("1000000")).build()))).build();
+    }
+    @Test void posDiscountNeverExceedsFiveMillionEvenForLegacyVouchers() {
+        var voucher=vouchers.findByCode("QA10").orElseThrow();
+        voucher.setMaximumDiscount(null);
+        for(String type:List.of("PERCENT","FIXED")) {
+            voucher.setType(type);voucher.setAmount(new BigDecimal(type.equals("PERCENT")?"100":"9000000"));vouchers.saveAndFlush(voucher);
+            var request=order();request.getItems().getFirst().setQuantity(10);request.setVoucherCode("QA10");
+            assertEquals(0,promotions.calculate(request,"Bearer test",false).voucherDiscount().compareTo(new BigDecimal("5000000")));
+        }
     }
     @Test void quoteDoesNotSpendAndCheckoutAndCancellationAreIdempotent() {
         Order request=order();request.setVoucherCode("QA10");request.setPointsToUse(50L);request.setCashReceived(new BigDecimal("2000000"));
@@ -157,7 +168,7 @@ class PosBenefitsIntegrationTest {
             Order saved = orders.create(request, "QA-earn-points", "Bearer test").getBody();
             // 1,000,000 + 8% VAT = 1,080,000 VND -> 1,080 points earned (1,000 VND = 1 point). Initial 100 + 1080 = 1180
             assertEquals(1180L, accounts.findById(10L).orElseThrow().getBalance());
-            assertEquals("VIP Silver", loyaltyPolicy.resolveTier(1180L));
+            assertEquals("Hạng Bạc", loyaltyPolicy.resolveTier(1180L));
 
             cancellations.cancel(saved.getId(), new OrderCancellationService.Request("Hủy đơn thu hồi điểm", false), "Bearer test");
             cancellations.complete(saved.getId());

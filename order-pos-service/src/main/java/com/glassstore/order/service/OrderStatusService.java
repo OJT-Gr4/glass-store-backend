@@ -24,6 +24,7 @@ public class OrderStatusService {
 
     private final OrderRepository orderRepository;
     private final OrderStatusHistoryRepository historyRepository;
+    private final VoucherEntitlementService voucherEntitlements;
 
     @Autowired(required = false)
     private OrderNotificationPublisher orderNotificationPublisher;
@@ -49,6 +50,8 @@ public class OrderStatusService {
         }
         order.setUpdatedAt(java.time.LocalDateTime.now());
         Order saved = orderRepository.save(order);
+        if (target == OrderStatus.CANCELLED || target == OrderStatus.REFUND_PENDING)
+            voucherEntitlements.release(saved);
 
         historyRepository.save(OrderStatusHistory.builder()
                 .order(saved)

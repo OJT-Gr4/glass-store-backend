@@ -31,9 +31,17 @@ public class PaymentController {
     private final PaymentService paymentService;
     private final PaymentGateway paymentGateway;
     private final OrderRepository orders;
+    private final com.glassstore.order.repository.PaymentRepository paymentRepository;
     private final org.springframework.beans.factory.ObjectProvider<SePayGateway> sePayGatewayProvider;
     private final org.springframework.beans.factory.ObjectProvider<ConfigurableSandboxPaymentGateway> sandboxGatewayProvider;
     private final com.glassstore.order.payment.SePayProperties sePayProperties;
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<Payment>>> listAll() {
+        return ResponseEntity.ok(ApiResponse.success("Danh sách thanh toán",
+                paymentRepository.findAll(org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))));
+    }
 
     private void requireOwner(Long id) {
         var order = orders.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));

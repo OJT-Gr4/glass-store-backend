@@ -35,6 +35,8 @@ import java.util.concurrent.ThreadLocalRandom;
 @Service
 @Slf4j
 public class OrderCheckoutService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private VoucherEntitlementService voucherEntitlements;
 
     private static final DateTimeFormatter CODE_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
 
@@ -107,8 +109,11 @@ public class OrderCheckoutService {
 
         PaymentMethod method = PaymentMethod.parse(request.getPaymentMethod());
         SalesChannel channel = SalesChannel.parse(request.getChannel());
+        SalesBranch salesBranch=channel==SalesChannel.POS?SessionSalesBranch.resolve(request.getBranchCode(),request.getBranchName()):new SalesBranch("ONLINE","Website trực tuyến");
         OrderType orderType = OrderType.parse(request.getOrderType());
 
+        if (voucherEntitlements != null && request.getVoucherCode() != null && !request.getVoucherCode().isBlank())
+            voucherEntitlements.requireAvailable(request.getVoucherCode(), request.getCustomerId(), channel);
         OrderDtos.PricedBasket basket = pricingService.price(request.getItems(), request.getVoucherCode(), channel);
 
         if (basket.getPriceChanges() != null && !basket.getPriceChanges().isEmpty()
@@ -160,7 +165,7 @@ public class OrderCheckoutService {
                 .voucherCode(request.getVoucherCode())
                 .prescriptionId(request.getPrescriptionId())
                 .staffName(request.getStaffName())
-                .branchName(request.getBranchName())
+                .branchName(salesBranch.name()).branchCode(salesBranch.code())
                 .notes(effectiveNotes(request.getNotes(), request.getPaymentProvider()))
                 .posSessionId(request.getPosSessionId())
                 .invoiceNumber(channel == SalesChannel.POS ? "INV-" + orderCode : null)
@@ -197,6 +202,7 @@ public class OrderCheckoutService {
         }
 
         Order saved = orderRepository.save(order);
+        if (voucherEntitlements != null) voucherEntitlements.reserve(saved);
 
         Payment payment = Payment.builder()
                 .orderId(saved.getId())
@@ -283,7 +289,7 @@ public class OrderCheckoutService {
             }
         } else {
             if (promotions != null) {
-                promotions.earnPoints(paid);
+                promotions.consume(paid);
             }
             inventoryService.onStatusChanged(paid, previous, OrderStatus.PAID);
         }
@@ -299,6 +305,7 @@ public class OrderCheckoutService {
         if (order == null) {
             return;
         }
+        if (order.getLabConfirmedAt() == null) return;
 
         // 1. Kiểm tra nếu đơn hàng có sản phẩm là kính thuốc (hoặc có gắn toa đo mắt prescription)
         boolean hasPrescription = order.getPrescriptionId() != null;
@@ -325,6 +332,9 @@ public class OrderCheckoutService {
         if (order == null) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Đơn hàng không hợp lệ");
         }
+        if (order.getLabConfirmedAt() == null)
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "Nhân viên POS cần xác nhận đơn trước khi gửi Lab.");
 
         // 1. Kiểm tra đơn hàng phải có Order.status == PAID
         if (order.currentStatus() != OrderStatus.PAID && order.currentStatus() != OrderStatus.LAB_DISPATCH_FAILED) {

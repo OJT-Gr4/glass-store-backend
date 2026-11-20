@@ -26,7 +26,7 @@ class OrderNotificationTest {
         OrderStatusHistoryRepository historyRepo = mock(OrderStatusHistoryRepository.class);
         OrderNotificationPublisher publisher = mock(OrderNotificationPublisher.class);
 
-        OrderStatusService service = new OrderStatusService(orderRepo, historyRepo);
+        OrderStatusService service = new OrderStatusService(orderRepo, historyRepo, org.mockito.Mockito.mock(VoucherEntitlementService.class));
         service.setOrderNotificationPublisher(publisher);
 
         Order order = Order.builder()

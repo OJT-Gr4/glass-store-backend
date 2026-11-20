@@ -175,13 +175,6 @@ public class OrderController {
     }
 
 
-    @PatchMapping("/{id}/cancel")
-    public ResponseEntity<ApiResponse<Order>> cancelCounterSale(@PathVariable("id") Long id,
-            @RequestBody OrderCancellationService.Request request,
-            @RequestHeader(value = "Authorization", required = false) String token) {
-        return ResponseEntity.ok(ApiResponse.success("Hủy đơn tại quầy", posCancellations.cancel(id, request, token)));
-    }
-
     @PostMapping("/{id}/refund-confirm")
     public ResponseEntity<ApiResponse<Order>> confirmCounterRefund(@PathVariable("id") Long id,
             @RequestHeader(value = "Authorization", required = false) String token) {

@@ -70,8 +70,14 @@ public class EyeExamAppointmentController {
         Long customerId = customer ? CurrentActor.id() : request.getCustomerId();
         if (customerId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn khách hàng");
         LocalDateTime scheduled = parseTime(request.getScheduledTime());
-        if (customer && !scheduled.isAfter(LocalDateTime.now(BOOKING_ZONE)))
+        LocalDateTime now = LocalDateTime.now(BOOKING_ZONE);
+        boolean walkInNow = !customer && "WALK_IN".equalsIgnoreCase(request.getTicketType());
+        if (customer && !scheduled.isAfter(now))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Giờ đặt lịch phải ở tương lai");
+        if (!customer && (scheduled.toLocalDate().isBefore(now.toLocalDate())
+                || (!walkInNow && !scheduled.isAfter(now))
+                || (walkInNow && scheduled.isBefore(now.minusMinutes(5)))))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ngày giờ khám không được ở trong quá khứ");
         String customerName = customers.requireCustomer(customerId);
         String locationCode = request.getLocationCode();
         if (locationCode != null && !locationCode.isBlank()) {

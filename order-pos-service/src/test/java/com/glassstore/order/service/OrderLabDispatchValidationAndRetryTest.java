@@ -83,6 +83,7 @@ class OrderLabDispatchValidationAndRetryTest {
                 .build());
 
         paidOrder = Order.builder()
+                .labConfirmedAt(java.time.LocalDateTime.now())
                 .id(100L)
                 .orderCode("ORD-20261105-001")
                 .customerId(42L)

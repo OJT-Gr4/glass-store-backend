@@ -31,6 +31,9 @@ public class JwtTokenProvider {
     }
 
     public String generateAccessToken(User user) {
+        return generateAccessToken(user,null);
+    }
+    public String generateAccessToken(User user,WorkBranch branch) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + accessTokenExpirationMs);
 
@@ -47,6 +50,8 @@ public class JwtTokenProvider {
                 .claim("roles", roleNames)
                 .claim("tokenVersion", user.getTokenVersion())
                 .claim("type", "ACCESS")
+                .claim("branchCode",branch==null?null:branch.code())
+                .claim("branchName",branch==null?null:branch.name())
                 .setIssuedAt(now)
                 .setExpiration(expiryDate)
                 .signWith(key, SignatureAlgorithm.HS256)
@@ -54,6 +59,9 @@ public class JwtTokenProvider {
     }
 
     public String generateRefreshToken(User user) {
+        return generateRefreshToken(user,null);
+    }
+    public String generateRefreshToken(User user,WorkBranch branch) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + refreshTokenExpirationMs);
 
@@ -62,6 +70,8 @@ public class JwtTokenProvider {
                 .claim("userId", user.getId())
                 .claim("tokenVersion", user.getTokenVersion())
                 .claim("type", "REFRESH")
+                .claim("branchCode",branch==null?null:branch.code())
+                .claim("branchName",branch==null?null:branch.name())
                 .setIssuedAt(now)
                 .setExpiration(expiryDate)
                 .signWith(key, SignatureAlgorithm.HS256)

@@ -8,6 +8,9 @@ import java.util.Map;
 /** Creates lens fabrication jobs in eyewear-lab-service (FR-POS-16). */
 @FeignClient(configuration = ServiceClientSecurity.class, name = "eyewear-lab-service", contextId = "labClient", url = "${services.eyewear-lab-service.url}")
 public interface LabClient {
+    record LoyaltyActivity(String key,Long customerId,java.time.LocalDateTime completedAt) {}
+    @GetMapping("/internal/loyalty/completed-services")
+    java.util.List<LoyaltyActivity> getLoyaltyActivities();
 
     @GetMapping("/api/lab-jobs/by-order/{orderId}")
     CatalogContracts.ApiEnvelope<Map<String,Object>> getByOrder(@PathVariable("orderId") Long orderId);

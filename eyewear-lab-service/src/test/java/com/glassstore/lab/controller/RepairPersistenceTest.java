@@ -17,7 +17,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("test") @Transactional
+@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:repair-persistence;MODE=MySQL;DB_CLOSE_DELAY=-1")
+@AutoConfigureMockMvc @ActiveProfiles("test") @Transactional
 @org.springframework.security.test.context.support.WithMockUser(username="1", roles="ADMIN")
 class RepairPersistenceTest {
     @Autowired MockMvc mvc;
@@ -61,5 +62,15 @@ class RepairPersistenceTest {
         mvc.perform(post("/api/repair-services").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(payload)))
             .andExpect(status().isBadRequest());
         assertEquals(before,repairs.count());
+    }
+    @Test void linkedPurchaseResolvesMissingCustomerFromServerAndRejectsWrongCustomer() throws Exception {
+        var payload = request(); payload.remove("customerId");
+        String body = mvc.perform(post("/api/repair-services").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(payload)))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        entities.clear();
+        assertEquals(1L, repairs.findById(json.readTree(body).path("id").asLong()).orElseThrow().getCustomerId());
+        payload.put("customerId",999L);
+        mvc.perform(post("/api/repair-services").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(payload)))
+            .andExpect(status().isBadRequest());
     }
 }

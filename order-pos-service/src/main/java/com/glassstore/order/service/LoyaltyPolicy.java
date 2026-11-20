@@ -13,9 +13,9 @@ public class LoyaltyPolicy {
     private boolean allowVoucherStack = true;
 
     public String resolveTier(long balance) {
-        if (balance >= 15000) return "VIP Platinum";
-        if (balance >= 5000) return "VIP Gold";
-        if (balance >= 1000) return "VIP Silver";
+        if (balance >= 10000) return "Hạng Kim Cương";
+        if (balance >= 5000) return "Hạng Vàng";
+        if (balance >= 1000) return "Hạng Bạc";
         return "Thành Viên";
     }
 }
