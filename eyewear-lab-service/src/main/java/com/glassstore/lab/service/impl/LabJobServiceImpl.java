@@ -139,6 +139,28 @@ public class LabJobServiceImpl implements LabJobService {
                             "Không tìm thấy toa kính với ID: " + requestedRxId));
         }
 
+        if (prescription == null && (request.getEffectiveOdSphere() != null || request.getEffectiveOsSphere() != null || request.getEffectivePd() != null || request.getPrescription() != null)) {
+            BigDecimal rawPd = request.getEffectivePd();
+            Integer rawOdAxis = request.getEffectiveOdAxis();
+            Integer rawOsAxis = request.getEffectiveOsAxis();
+
+            prescription = Prescription.builder()
+                    .customerId(request.getCustomerId())
+                    .customerName(request.getCustomerName())
+                    .version(request.getPrescriptionVersion() != null ? request.getPrescriptionVersion() : 0L)
+                    .odSph(request.getEffectiveOdSphere())
+                    .odCyl(request.getEffectiveOdCyl())
+                    .odAxis(rawOdAxis)
+                    .odAdd(request.getEffectiveOdAdd())
+                    .osSph(request.getEffectiveOsSphere())
+                    .osCyl(request.getEffectiveOsCyl())
+                    .osAxis(rawOsAxis)
+                    .osAdd(request.getEffectiveOsAdd())
+                    .pd(rawPd)
+                    .notes("Thông số theo đơn đặt hàng")
+                    .build();
+        }
+
         // Fabrication uses an existing clinical prescription, never invented measurements or staff IDs.
         if (prescription == null) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Thiếu thông tin toa kính cho lệnh gia công");
@@ -447,7 +469,7 @@ public class LabJobServiceImpl implements LabJobService {
         }
 
         // Subtask 7.3: Giữ liên kết lần mài lại với công việc gốc và toa đã xác nhận
-        if (job.getPrescriptionId() == null) {
+        if (job.getPrescriptionId() == null && job.getPrescriptionSnapshot() == null) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Không tìm thấy toa kính gốc đã xác nhận cho lệnh mài lại");
         }
 
@@ -610,6 +632,13 @@ public class LabJobServiceImpl implements LabJobService {
         } catch (Exception ex) {
             log.warn("Non-fatal error publishing LAB_REWORK notification for job {}: {}", saved.getId(), ex.getMessage());
         }
+    }
+
+    private BigDecimal clampDecimal(BigDecimal value, double min, double max, BigDecimal defaultValue) {
+        if (value == null) return defaultValue;
+        if (value.doubleValue() < min) return BigDecimal.valueOf(min);
+        if (value.doubleValue() > max) return BigDecimal.valueOf(max);
+        return value;
     }
 
     private void checkRange(BigDecimal value, double min, double max, String label) {

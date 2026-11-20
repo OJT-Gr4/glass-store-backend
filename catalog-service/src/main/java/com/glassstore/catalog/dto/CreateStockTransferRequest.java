@@ -13,25 +13,25 @@ import java.util.List;
 @Data
 public class CreateStockTransferRequest {
 
-    @NotBlank
+    @NotBlank(message = "Kho nguồn không được để trống")
     private String sourceLocationCode;
 
-    @NotBlank
+    @NotBlank(message = "Kho đích không được để trống")
     private String destinationLocationCode;
 
-    @Size(max = 500)
+    @Size(max = 500, message = "Lý do điều chuyển tối đa 500 ký tự")
     private String reason;
 
-    @NotEmpty
+    @NotEmpty(message = "Danh sách hàng điều chuyển không được để trống")
     private List<@Valid Item> items;
 
     @Data
     public static class Item {
-        @NotBlank
+        @NotBlank(message = "Mã SKU không được để trống")
         private String sku;
 
-        @NotNull
-        @Positive
+        @NotNull(message = "Số lượng không được để trống")
+        @Positive(message = "Số lượng điều chuyển phải lớn hơn 0")
         private Integer quantity;
     }
 }

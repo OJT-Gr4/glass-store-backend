@@ -146,6 +146,7 @@ public final class OrderDtos {
     @Builder
     public static class CancelRequest {
         private String reason;
+        private boolean refundConfirmed;
     }
 
     /** Priced basket, computed server-side before anything is persisted. */

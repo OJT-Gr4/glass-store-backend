@@ -54,6 +54,13 @@ class OrderAccessSecurityTest {
         return "Bearer "+encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(),claims)).getTokenValue();
     }
     String customer() {return token("CUSTOMER","ACCESS",Instant.now().plusSeconds(300),KEY);}
+    @Test void labCanReadMinimalCustomerTierButCustomerCannot() throws Exception {
+        String path="/api/orders/lab-customer-tiers?orderIds="+mine.getId()+","+other.getId();
+        mvc.perform(get(path).header("Authorization",customer())).andExpect(status().isForbidden());
+        mvc.perform(get(path).header("Authorization",token("LAB_TECH","ACCESS",Instant.now().plusSeconds(300),KEY)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(2)).andExpect(jsonPath("$.data[0].tier").value("Thành Viên"))
+            .andExpect(jsonPath("$.data[0].finalAmount").doesNotExist());
+    }
     @Test void sensitiveEndpointsRequireAuthentication() throws Exception {
         for(String path:List.of("/api/orders","/api/orders/"+mine.getId(),"/internal/warranty-items?phone=0901234567"))
             mvc.perform(get(path)).andExpect(status().isUnauthorized());
@@ -93,6 +100,20 @@ class OrderAccessSecurityTest {
                 .header("Authorization",token(role,"ACCESS",Instant.now().plusSeconds(300),KEY))
                 .contentType("application/json").content("{\"status\":\"PREPARING\"}"))
                 .andExpect(status().isForbidden());
+    }
+    @Test void labQueueIsInternalAndOnlyClinicalRolesMayConfirmPrescription() throws Exception {
+        mvc.perform(get("/api/orders/lab-pending").header("Authorization",customer())).andExpect(status().isForbidden());
+        for (String role : List.of("LAB_TECH", "OPTOMETRIST")) {
+            String value = token(role,"ACCESS",Instant.now().plusSeconds(300),KEY);
+            mvc.perform(get("/api/orders/lab-pending").header("Authorization",value)).andExpect(status().isOk());
+            mvc.perform(put("/api/orders/"+mine.getId()+"/lab-prescription").header("Authorization",value)
+                .contentType("application/json").content("{\"prescriptionId\":7,\"expectedVersion\":0,\"confirmed\":true}"))
+                .andExpect(status().isForbidden());
+        }
+        mvc.perform(put("/api/orders/"+mine.getId()+"/lab-prescription")
+            .header("Authorization",token("SALES_STAFF","ACCESS",Instant.now().plusSeconds(300),KEY))
+            .contentType("application/json").content("{\"prescriptionId\":7,\"expectedVersion\":0,\"confirmed\":false}"))
+            .andExpect(status().isBadRequest());
     }
     @Test void internalContractsRequireAServiceToken() throws Exception {
         mvc.perform(get("/internal/warranty-items?phone=0901234567").header("Authorization",customer())).andExpect(status().isForbidden());

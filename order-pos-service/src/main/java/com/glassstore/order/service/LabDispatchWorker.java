@@ -22,6 +22,11 @@ public class LabDispatchWorker {
         var entry = outbox.lockById(id).orElseThrow();
         if (!"PENDING".equals(entry.getStatus())) return;
         var order = orders.findById(entry.getOrderId()).orElseThrow();
+        if (order.getLabConfirmedAt() == null) {
+            entry.setStatus("WAITING_POS");
+            entry.setLastError("Chờ nhân viên POS xác nhận trước khi gửi xưởng");
+            return;
+        }
         if (order.getStatus() == OrderStatus.CANCEL_REQUESTED) {
             entry.setLastError("Đơn đang chờ xử lý yêu cầu hủy"); return;
         }
@@ -31,6 +36,7 @@ public class LabDispatchWorker {
         }
         entry.setAttempts(entry.getAttempts()+1);
         try {
+            LabOrderReviewService.validateMeasurements(order.getPrescription());
             var lensItems = order.getItems().stream().filter(item -> {
                 String sku = Objects.toString(item.getSkuId(), "").toUpperCase(Locale.ROOT);
                 return item.getPrescriptionId() != null || sku.startsWith("LNS-") || sku.startsWith("LZ-")
@@ -42,10 +48,21 @@ public class LabDispatchWorker {
                 if (item.getId() == null) throw new IllegalStateException("Mặt hàng gia công chưa được lưu");
                 Map<String,Object> payload = new LinkedHashMap<>();
                 payload.put("orderId", order.getId()); payload.put("orderItemId", item.getId());
-                payload.put("prescriptionId", item.getPrescriptionId() != null ? item.getPrescriptionId() : order.getPrescriptionId());
-                if (order.getPrescription() == null || !"CLINICAL_REVISION".equals(order.getPrescription().getSource()))
-                    throw new IllegalStateException("Đơn chưa chốt phiên bản toa kính; cần đối soát trước khi gửi Lab");
-                payload.put("prescriptionVersion", order.getPrescription().getVersion());
+                Long rxId = item.getPrescriptionId() != null ? item.getPrescriptionId() : order.getPrescriptionId();
+                payload.put("prescriptionId", rxId);
+                if (order.getPrescription() != null) {
+                    var rx = order.getPrescription();
+                    payload.put("prescriptionVersion", rx.getVersion() != null ? rx.getVersion() : 0L);
+                    payload.put("odSphere", rx.getOdSph());
+                    payload.put("odCyl", rx.getOdCyl());
+                    payload.put("odAxis", rx.getOdAxis());
+                    payload.put("odAdd", rx.getOdAdd());
+                    payload.put("osSphere", rx.getOsSph());
+                    payload.put("osCyl", rx.getOsCyl());
+                    payload.put("osAxis", rx.getOsAxis());
+                    payload.put("osAdd", rx.getOsAdd());
+                    payload.put("pd", rx.getPd());
+                }
                 payload.put("idempotencyKey", "LAB_REQ_" + order.getId() + "_" + item.getId());
                 payload.put("orderCode", order.getOrderCode()); payload.put("customerId", order.getCustomerId());
                 payload.put("customerName", order.getCustomerName()); payload.put("sku", item.getSkuId());

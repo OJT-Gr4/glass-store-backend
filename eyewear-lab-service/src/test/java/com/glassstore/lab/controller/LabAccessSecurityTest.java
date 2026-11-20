@@ -51,6 +51,15 @@ class LabAccessSecurityTest {
         for(String path:java.util.List.of("/api/prescriptions","/api/lab-jobs","/api/appointments","/api/warranties","/api/repair-services"))
             mvc.perform(get(path)).andExpect(status().isUnauthorized());
     }
+    @Test void onlyServiceCanReadCompletedLoyaltyActivities() throws Exception {
+        mvc.perform(get("/internal/loyalty/completed-services")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/internal/loyalty/completed-services").with(role("CUSTOMER"))).andExpect(status().isForbidden());
+        mvc.perform(get("/internal/loyalty/completed-services").with(role("ADMIN"))).andExpect(status().isForbidden());
+        mvc.perform(get("/internal/loyalty/completed-services").with(role("SERVICE"))).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        ownWarranty.setStatus("COMPLETED");warranties.saveAndFlush(ownWarranty);
+        mvc.perform(get("/internal/loyalty/completed-services").with(role("SERVICE"))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].customerId").value(10));
+    }
     @Test void customerCannotReadAnotherClinicalRecordOrWarranty() throws Exception {
         mvc.perform(get("/api/prescriptions/"+mine.getId()).with(role("CUSTOMER"))).andExpect(status().isOk());
         mvc.perform(get("/api/prescriptions/"+other.getId()).with(role("CUSTOMER"))).andExpect(status().isForbidden());
@@ -77,6 +86,11 @@ class LabAccessSecurityTest {
             .andExpect(status().isForbidden());
         mvc.perform(post("/api/warranties").with(role("CUSTOMER")).contentType("application/json").content("{}"))
             .andExpect(status().isForbidden());
+        mvc.perform(post("/api/warranties/claims").with(role("CUSTOMER")).contentType("application/json")
+            .content("{\"customerId\":999,\"status\":\"ACTIVE\",\"productName\":\"Bolon\",\"issueDescription\":\"Trầy tròng kính\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.customerId").value(10))
+            .andExpect(jsonPath("$.status").value("WAITING_PROCESS"));
         mvc.perform(post("/api/lab-jobs/from-order").with(role("ADMIN")).contentType("application/json").content("{}"))
             .andExpect(status().isForbidden());
     }
@@ -110,6 +124,44 @@ class LabAccessSecurityTest {
             .andExpect(status().isForbidden());
         mvc.perform(get("/api/appointments/location/BRANCH_01/exists").with(role("SERVICE")))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data").value(true));
+    }
+    @Test void lensOnlyOrderCanCreateAJobWithoutAFrameAndRetrySafely() throws Exception {
+        String payload = "{\"orderId\":502,\"prescriptionId\":"+mine.getId()+",\"lensSku\":\"LNS-QA\"}";
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mvc.perform(post("/api/lab-jobs/from-order").with(role("SERVICE"))
+                .contentType("application/json").content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.orderId").value(502))
+                .andExpect(jsonPath("$.data.frameSku").doesNotExist());
+        }
+        org.junit.jupiter.api.Assertions.assertEquals(1, jobs.count());
+    }
+    @Test void orderMeasurementsArePreservedWithoutCreatingAFakeClinicalExam() throws Exception {
+        mvc.perform(post("/api/lab-jobs/from-order").with(role("SERVICE")).contentType("application/json")
+            .content("{\"orderId\":503,\"customerId\":10,\"lensSku\":\"LNS-QA\",\"odSphere\":-2,\"odCyl\":-1,\"odAxis\":90,\"odAdd\":0,\"osSphere\":-3,\"osCyl\":-0.5,\"osAxis\":80,\"osAdd\":0,\"pd\":63}"))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.data.orderId").value(503));
+        org.junit.jupiter.api.Assertions.assertEquals(2, prescriptions.count());
+        mvc.perform(post("/api/lab-jobs/from-order").with(role("SERVICE")).contentType("application/json")
+            .content("{\"orderId\":504,\"customerId\":10,\"lensSku\":\"LNS-QA\",\"odSphere\":-2,\"osSphere\":-3,\"pd\":1.5}"))
+            .andExpect(status().isBadRequest());
+        org.junit.jupiter.api.Assertions.assertEquals(1, jobs.count());
+    }
+    @Test void warrantyHandoverPersistsHomeAddressAndRequiresItForDoorCollection() throws Exception {
+        org.mockito.Mockito.when(locationClient.requireReceivingBranch("BRANCH_01")).thenReturn(
+            new com.glassstore.lab.client.CatalogLocationClient.ReceivingBranch("BRANCH_01","QA showroom","123 QA Street"));
+        String base="{\"issueDescription\":\"QA repair\",\"productName\":\"QA frame\",\"deliveryMethod\":\"DOOR\",\"receivingBranchCode\":\"BRANCH_01\",\"receivingBranchName\":\"Untrusted name\",\"customerPhone\":\"0901234567\"";
+        long before=warranties.count();
+        mvc.perform(post("/api/warranties/claims").with(role("CUSTOMER")).contentType("application/json").content(base+"}"))
+            .andExpect(status().isBadRequest());
+        org.junit.jupiter.api.Assertions.assertEquals(before,warranties.count());
+        String body=mvc.perform(post("/api/warranties/claims").with(role("CUSTOMER")).contentType("application/json")
+            .content(base+",\"collectionAddress\":\"123 Street A, District B\"}"))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.customerId").value(10))
+            .andExpect(jsonPath("$.receivingBranchName").value("QA showroom"))
+            .andExpect(jsonPath("$.collectionAddress").value("123 Street A, District B"))
+            .andReturn().getResponse().getContentAsString();
+        Long id=new com.fasterxml.jackson.databind.ObjectMapper().readTree(body).path("id").asLong();
+        org.junit.jupiter.api.Assertions.assertEquals("123 Street A, District B",warranties.findById(id).orElseThrow().getCollectionAddress());
     }
     @Test void authenticatedServiceCanCreateAndLookUpTheExactOrdersJob() throws Exception {
         mvc.perform(post("/api/lab-jobs/from-order").with(role("SERVICE")).contentType("application/json")

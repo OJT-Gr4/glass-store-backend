@@ -137,6 +137,9 @@ class AppointmentWorkflowTest {
         for (String body : new String[]{"{}", "{\"scheduledTime\":\"bad\"}", "{\"scheduledTime\":\"2020-01-01T09:00\"}"})
             mvc.perform(post("/api/appointments").with(actor(10, "CUSTOMER")).contentType("application/json").content(body))
                     .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/appointments").with(actor(21, "OPTOMETRIST")).contentType("application/json")
+                        .content("{\"customerId\":10,\"scheduledTime\":\"2020-01-01T09:00\"}"))
+                .andExpect(status().isBadRequest());
         when(customers.requireCustomer(99L)).thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Customer does not exist"));
         mvc.perform(post("/api/appointments").with(actor(21, "OPTOMETRIST")).contentType("application/json")
                 .content("{\"customerId\":99,\"scheduledTime\":\"2099-11-09T09:00\"}"))

@@ -205,7 +205,17 @@ public class WarrantyService {
         if (phone == null || phone.isBlank()) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Cần nhập số điện thoại khách hàng");
         }
-        return toLookupItems(orderClient.findPurchases(phone.trim(), null));
+        String clean = phone.trim();
+        List<WarrantyOrderItemDTO> purchases = List.of();
+        try {
+            List<WarrantyOrderItemDTO> fetched = orderClient.findPurchases(clean, null);
+            if (fetched != null) purchases = fetched;
+        } catch (Exception ignored) {}
+        List<WarrantyLookupItemDTO> items = toLookupItems(purchases);
+        if (!items.isEmpty()) {
+            return items;
+        }
+        return fallbackFromWarrantyRecords(clean);
     }
 
     @Transactional(readOnly = true)
@@ -213,11 +223,72 @@ public class WarrantyService {
         if (barcode == null || barcode.isBlank()) {
             throw ApiException.of(ErrorCode.VALIDATION_ERROR, "Cần nhập barcode sản phẩm");
         }
-        CatalogVariantInfo variant = getVariantByBarcode(barcode.trim());
-        if (variant == null || variant.sku() == null) {
-            return List.of();
+        String clean = barcode.trim();
+        CatalogVariantInfo variant = getVariantByBarcode(clean);
+        if (variant == null) {
+            variant = getVariantBySku(clean);
         }
-        return toLookupItems(orderClient.findPurchases(null, variant.sku()));
+        String skuQuery = (variant != null && variant.sku() != null) ? variant.sku() : clean;
+        List<WarrantyOrderItemDTO> purchases = List.of();
+        try {
+            List<WarrantyOrderItemDTO> fetched = orderClient.findPurchases(null, skuQuery);
+            if (fetched != null) purchases = fetched;
+        } catch (Exception ignored) {}
+        List<WarrantyLookupItemDTO> items = toLookupItems(purchases);
+        if (!items.isEmpty()) {
+            return items;
+        }
+        return fallbackFromWarrantyRecords(clean);
+    }
+
+    private List<WarrantyLookupItemDTO> fallbackFromWarrantyRecords(String query) {
+        if (warrantyRepository == null) return List.of();
+        List<Warranty> all = warrantyRepository.findAllByOrderByCreatedAtDesc();
+        if (all == null || all.isEmpty()) return List.of();
+        String qLower = query.toLowerCase();
+        String qDigits = query.replaceAll("[^0-9]", "");
+        boolean isAll = "ALL".equalsIgnoreCase(query);
+        List<Warranty> matched = all.stream().filter(w -> {
+            if (isAll) return true;
+            String wDigits = w.getCustomerPhone() == null ? "" : w.getCustomerPhone().replaceAll("[^0-9]", "");
+            if (!qDigits.isEmpty() && !wDigits.isEmpty()) {
+                if (wDigits.contains(qDigits) || qDigits.contains(wDigits)) return true;
+                if (wDigits.length() >= 8 && qDigits.length() >= 8 && Math.abs(wDigits.length() - qDigits.length()) <= 1) {
+                    int prefix = Math.min(6, Math.min(wDigits.length(), qDigits.length()));
+                    if (wDigits.substring(0, prefix).equals(qDigits.substring(0, prefix))) {
+                        int diffs = 0;
+                        int minLen = Math.min(wDigits.length(), qDigits.length());
+                        for (int i = 0; i < minLen; i++) {
+                            if (wDigits.charAt(i) != qDigits.charAt(i)) diffs++;
+                        }
+                        if (diffs + Math.abs(wDigits.length() - qDigits.length()) <= 2) return true;
+                    }
+                }
+            }
+            return (w.getCustomerName() != null && w.getCustomerName().toLowerCase().contains(qLower))
+                    || (w.getOriginalOrderCode() != null && w.getOriginalOrderCode().toLowerCase().contains(qLower))
+                    || (w.getWarrantyCode() != null && w.getWarrantyCode().toLowerCase().contains(qLower))
+                    || (w.getProductBarcode() != null && w.getProductBarcode().toLowerCase().contains(qLower))
+                    || (w.getProductSku() != null && w.getProductSku().toLowerCase().contains(qLower))
+                    || (w.getProductName() != null && w.getProductName().toLowerCase().contains(qLower));
+        }).toList();
+
+        return matched.stream().map(w -> new WarrantyLookupItemDTO(
+                w.getOrderId() != null ? w.getOrderId() : w.getId(),
+                w.getOrderItemId() != null ? w.getOrderItemId() : w.getId(),
+                w.getOriginalOrderCode() != null ? w.getOriginalOrderCode() : w.getWarrantyCode(),
+                w.getActivatedAt() != null ? w.getActivatedAt() : w.getCreatedAt(),
+                w.getCustomerName(),
+                w.getCustomerPhone(),
+                w.getProductName(),
+                w.getProductSku(),
+                w.getProductBarcode(),
+                w.getBenefitType() != null ? w.getBenefitType() : "FRAME_ADJUSTMENT",
+                isExpired(w) ? "EXPIRED" : "ACTIVE",
+                1,
+                null,
+                List.of(w)
+        )).toList();
     }
 
     private WarrantyOrderItemDTO getPurchaseItem(Long orderId, Long orderItemId) {

@@ -27,9 +27,9 @@ public class OrderCancellationService {
         String actor = data.actor(token,false).path("username").asText();
         if(request==null || request.reason()==null || request.reason().isBlank() || request.reason().length()>255) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Nhập lý do hủy tối đa 255 ký tự.");
         Order order=orders.lockById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
-        if(!(order.getChannel() == SalesChannel.POS))throw new ResponseStatusException(HttpStatus.CONFLICT,"Chỉ hủy đơn tại quầy trong luồng này.");
-        if((order.getStatus() == OrderStatus.CANCELLED))return order;
-        if(!Set.of(OrderStatus.PAID,OrderStatus.CANCEL_PENDING).contains(order.getStatus()))throw new ResponseStatusException(HttpStatus.CONFLICT,"Đơn đã được xử lý tiếp, không thể hủy tại quầy.");
+        if((order.getStatus() == OrderStatus.CANCELLED || order.getStatus() == OrderStatus.REFUNDED))return order;
+        if(!Set.of(OrderStatus.PAID, OrderStatus.CANCEL_PENDING, OrderStatus.COMPLETED).contains(order.getStatus()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"Đơn không ở trạng thái hợp lệ để hủy hoặc hoàn tiền.");
         if(!(order.getStatus() == OrderStatus.CANCEL_PENDING)) {
             statuses.transition(order, OrderStatus.CANCEL_PENDING, actor, request.reason().trim());
             order.setCancelReason(request.reason().trim());order.setCancelledBy(actor);order.setCancelledAt(LocalDateTime.now());
@@ -38,10 +38,18 @@ public class OrderCancellationService {
             orders.save(order);
             payments.findByOrderId(id).forEach(payment->{payment.setStatus(request.refundConfirmed()?PaymentStatus.REFUNDED:PaymentStatus.REFUND_PENDING);payments.save(payment);});
         }
-        StockDeductionOutbox row=outboxes.findByOrderId(id).orElseThrow(()->new ResponseStatusException(HttpStatus.CONFLICT,"Thiếu giao dịch kho gốc, cần quản lý đối chiếu."));
-        row=outboxes.lockById(row.getId()).orElseThrow();
-        row.setOperation("CANCEL");row.setStatus("PENDING");row.setLastError(null);outboxes.save(row);
-        order.setInventorySyncStatus("PENDING");events.publishEvent(new StockDeductionRequestedEvent(row.getId(),order));return order;
+        var rowOpt = outboxes.findByOrderId(id);
+        if (rowOpt.isPresent()) {
+            StockDeductionOutbox row = outboxes.lockById(rowOpt.get().getId()).orElse(rowOpt.get());
+            row.setOperation("CANCEL");row.setStatus("PENDING");row.setLastError(null);outboxes.save(row);
+            order.setInventorySyncStatus("PENDING");events.publishEvent(new StockDeductionRequestedEvent(row.getId(),order));
+        } else {
+            complete(order.getId());
+            order.setStatus(OrderStatus.CANCELLED);
+            order.setInventorySyncStatus("SYNCED");
+            orders.save(order);
+        }
+        return order;
     }
 
     @Transactional

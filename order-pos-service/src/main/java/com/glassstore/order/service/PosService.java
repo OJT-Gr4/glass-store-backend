@@ -31,6 +31,7 @@ public class PosService {
     private final OrderRepository orderRepository;
     private final BasketPricingService pricingService;
     private final OrderService counterSales;
+    private final VoucherEntitlementService voucherEntitlements;
 
     @Transactional
     public PosSession openSession(String staffName, String branchName) {
@@ -77,6 +78,8 @@ public class PosService {
     }
 
     public OrderDtos.PricedBasket preview(OrderDtos.CheckoutRequest request) {
+        if (request.getVoucherCode() != null && !request.getVoucherCode().isBlank())
+            voucherEntitlements.requireAvailable(request.getVoucherCode(), request.getCustomerId(), SalesChannel.POS);
         return pricingService.price(request.getItems(), request.getVoucherCode(), SalesChannel.POS);
     }
 

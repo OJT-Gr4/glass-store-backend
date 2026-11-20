@@ -73,6 +73,17 @@ public class Warranty {
     @Column(name = "claim_type")
     private String claimType;
 
+    @Column(name="delivery_method",length=20)
+    private String deliveryMethod;
+    @Column(name="receiving_branch_code",length=50)
+    private String receivingBranchCode;
+    @Column(name="receiving_branch_name",length=160)
+    private String receivingBranchName;
+    @Column(name="receiving_branch_address",length=500)
+    private String receivingBranchAddress;
+    @Column(name="collection_address",length=500)
+    private String collectionAddress;
+
     @Column(name = "policy_ref")
     private String policyRef;
 

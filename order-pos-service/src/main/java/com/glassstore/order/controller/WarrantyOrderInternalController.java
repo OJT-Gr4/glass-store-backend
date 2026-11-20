@@ -19,9 +19,6 @@ public class WarrantyOrderInternalController {
     public ResponseEntity<List<WarrantyOrderItemDTO>> findPurchases(
             @RequestParam(name = "phone", required = false) String phone,
             @RequestParam(name = "sku", required = false) String sku) {
-        if ((phone == null || phone.isBlank()) == (sku == null || sku.isBlank())) {
-            return ResponseEntity.badRequest().build();
-        }
         return ResponseEntity.ok(lookupService.findPurchases(phone, sku));
     }
 

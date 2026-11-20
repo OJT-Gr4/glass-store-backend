@@ -59,14 +59,14 @@ public enum OrderStatus {
             Map.entry(READY_FOR_PICKUP, EnumSet.of(COMPLETED)),
             Map.entry(CANCEL_REQUESTED, EnumSet.of(CANCELLED, REFUND_PENDING, PENDING_PAYMENT, PAID, LAB_DISPATCH_FAILED, PENDING_CONFIRMATION, CONFIRMED)),
             Map.entry(REFUND_PENDING, EnumSet.of(REFUNDED)),
-            Map.entry(COMPLETED, EnumSet.noneOf(OrderStatus.class)),
+            Map.entry(COMPLETED, EnumSet.of(CANCEL_PENDING, CANCELLED, REFUND_PENDING, REFUNDED)),
             Map.entry(CANCELLED, EnumSet.noneOf(OrderStatus.class)),
             Map.entry(REFUNDED, EnumSet.noneOf(OrderStatus.class))
     );
 
     /** Terminal states never change again (BR-17: no direct edits afterwards). */
     private static final Set<OrderStatus> TERMINAL =
-            Collections.unmodifiableSet(EnumSet.of(COMPLETED, CANCELLED, REFUNDED));
+            Collections.unmodifiableSet(EnumSet.of(CANCELLED, REFUNDED));
 
     /** States in which a customer may still request cancellation (OQ-10). */
     private static final Set<OrderStatus> CUSTOMER_CANCELLABLE = Collections.unmodifiableSet(
@@ -74,7 +74,7 @@ public enum OrderStatus {
 
     /** States in which staff may still cancel (OQ-10). */
     private static final Set<OrderStatus> STAFF_CANCELLABLE = Collections.unmodifiableSet(
-            EnumSet.of(PENDING_PAYMENT, PAID, LAB_DISPATCH_FAILED, PENDING_CONFIRMATION, CONFIRMED, PREPARING, CANCEL_REQUESTED));
+            EnumSet.of(PENDING_PAYMENT, PAID, LAB_DISPATCH_FAILED, PENDING_CONFIRMATION, CONFIRMED, PREPARING, CANCEL_REQUESTED, COMPLETED));
 
     public boolean canTransitionTo(OrderStatus target) {
         if (target == null) {

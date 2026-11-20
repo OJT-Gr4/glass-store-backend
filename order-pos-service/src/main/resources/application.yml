@@ -9,8 +9,9 @@ payment:
     secret-key: ${PAYMENT_SANDBOX_SECRET:GlassStoreSandboxSecretKey20261110!@#HMAC512}
   vietqr:
     bank-id: ${PAYMENT_VIETQR_BANK_ID:970422}
-    account-no: ${PAYMENT_VIETQR_ACCOUNT_NO:0987654321}
-    account-name: ${PAYMENT_VIETQR_ACCOUNT_NAME:OPTIVISION GLASS STORE}
+    bank-name: ${PAYMENT_VIETQR_BANK_NAME:MBBank}
+    account-no: ${PAYMENT_VIETQR_ACCOUNT_NO:3906122006}
+    account-name: ${PAYMENT_VIETQR_ACCOUNT_NAME:TRAN HUU TRUNG PHONG}
     template: ${PAYMENT_VIETQR_TEMPLATE:compact2}
   vnpay:
     tmn-code: ${PAYMENT_VNPAY_TMN_CODE:OPTIVIS1}
@@ -19,9 +20,10 @@ payment:
     return-url: ${PAYMENT_VNPAY_RETURN_URL:http://localhost:5173/payment-return}
   sepay:
     merchant-id: ${SEPAY_MERCHANT_ID:SP-LIVE-PH25A899}
-    secret-key: ${SEPAY_SECRET_KEY:spsk_live_nFh2X98U7y5kL4mP2vB6c1sW8zT3qR7v}
-    ipn-secret: ${SEPAY_IPN_SECRET:spsk_live_nFh2X98U7y5kL4mP2vB6c1sW8zT3qR7v}
-    return-base-url: ${SEPAY_RETURN_BASE_URL:http://localhost:5184}
+    secret-key: ${SEPAY_SECRET_KEY:spsk_live_Dz8uBeWQFN9PiJKu1xMjTAQ9EyBsC9BU}
+    ipn-secret: ${SEPAY_IPN_SECRET:30072006dat_sepay_ipn_secret_key_2026}
+    webhook-api-key: ${SEPAY_WEBHOOK_API_KEY:90e43b5e1afacc0ed10a6da8ac19cd3545050dc2}
+    return-base-url: ${SEPAY_RETURN_BASE_URL:http://localhost:5173}
 
 services:
   identity-service:
@@ -68,6 +70,6 @@ vietqr:
     username: ${VIETQR_PARTNER_USERNAME:glassstore_pos}
     password: ${VIETQR_PARTNER_PASSWORD:GlassStore@VietQr2026}
     bank-code: ${VIETQR_BANK_CODE:MB}
-    bank-account: ${VIETQR_BANK_ACCOUNT:0938773607}
-    user-bank-name: ${VIETQR_USER_BANK_NAME:CONG TY KINH MAT OPTIVISION}
+    bank-account: ${VIETQR_BANK_ACCOUNT:${PAYMENT_VIETQR_ACCOUNT_NO:3906122006}}
+    user-bank-name: ${VIETQR_USER_BANK_NAME:${PAYMENT_VIETQR_ACCOUNT_NAME:TRAN HUU TRUNG PHONG}}
     token-secret: ${VIETQR_TOKEN_SECRET:GlassStoreVietQrSecretKey20261111!@#Token300sValidation}

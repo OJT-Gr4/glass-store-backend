@@ -70,7 +70,10 @@ public class AuthController {
     @PostMapping("/otp/send")
     public ResponseEntity<ApiResponse<OtpSendResponse>> sendOtp(@Valid @RequestBody OtpSendRequest request) {
         OtpSendResponse response = otpService.sendOtp(request);
-        return ResponseEntity.ok(ApiResponse.success("Đã gửi mã xác thực OTP tới số điện thoại đã đăng ký", response));
+        String destination = (response.getMaskedEmail() != null && !response.getMaskedEmail().isBlank())
+                ? "email " + response.getMaskedEmail()
+                : "số điện thoại đã đăng ký";
+        return ResponseEntity.ok(ApiResponse.success("Đã gửi mã xác thực OTP tới " + destination, response));
     }
 
     @PostMapping("/otp/verify")

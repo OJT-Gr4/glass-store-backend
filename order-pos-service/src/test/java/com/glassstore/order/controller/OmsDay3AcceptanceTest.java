@@ -59,6 +59,15 @@ class OmsDay3AcceptanceTest {
         assertEquals(1,audit.size()); assertNotNull(audit.get(0).getChangedAt());
         assertEquals("1",audit.get(0).getActor()); assertEquals("Day 3 acceptance",audit.get(0).getReason());
     }
+    @Test void prescriptionOrderCannotBypassPosApprovalThroughOmsOrLegacyDispatch() throws Exception {
+        var order=order(OrderStatus.PAID,OrderType.LENS_ONLY,SalesChannel.ONLINE);
+        mvc.perform(patch("/api/orders/"+order.getId()+"/status").contentType(MediaType.APPLICATION_JSON).content(payload("PREPARING")))
+            .andExpect(status().isConflict());
+        mvc.perform(post("/api/orders/"+order.getId()+"/dispatch-lab"))
+            .andExpect(status().isConflict());
+        assertEquals(OrderStatus.PAID,orders.findById(order.getId()).orElseThrow().getStatus());
+        org.mockito.Mockito.verify(lab,org.mockito.Mockito.never()).createFromOrder(org.mockito.ArgumentMatchers.any());
+    }
     @Test void invalidJumpKeepsOriginalOrderAndHistory() throws Exception {
         var order=order(OrderStatus.PENDING_PAYMENT,OrderType.FRAME_ONLY,SalesChannel.ONLINE);
         mvc.perform(patch("/api/orders/"+order.getId()+"/status").contentType(MediaType.APPLICATION_JSON).content(payload("SHIPPING")))
@@ -98,6 +107,7 @@ class OmsDay3AcceptanceTest {
 
     @Test void verifiedQcAllowsHandoverAndPersistsTheTrackingCode() throws Exception {
         var order=order(OrderStatus.PREPARING,OrderType.COMPLETE_GLASSES,SalesChannel.ONLINE);
+        order.setLabConfirmedAt(java.time.LocalDateTime.now()); orders.saveAndFlush(order);
         var response=new com.glassstore.order.client.CatalogContracts.ApiEnvelope<java.util.Map<String,Object>>();
         response.setData(java.util.Map.of("orderId",order.getId(),"status","QC_PASSED"));
         org.mockito.Mockito.when(lab.getByOrder(order.getId())).thenReturn(response);

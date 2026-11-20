@@ -16,6 +16,7 @@ public class OtpVerifyResponse {
     private Long userId;
     private String purpose;
     private String maskedPhone;
+    private String maskedEmail;
     private boolean phoneVerified;
     private LocalDateTime verifiedAt;
 }

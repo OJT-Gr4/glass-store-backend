@@ -100,6 +100,12 @@ public class Order {
     @Embedded
     private OrderPrescription prescription;
 
+    @Column(name = "lab_confirmed_at")
+    private LocalDateTime labConfirmedAt;
+
+    @Column(name = "lab_confirmed_by", length = 120)
+    private String labConfirmedBy;
+
     @Column(name = "staff_name", length = 120)
     private String staffName;
 

@@ -32,15 +32,110 @@ public class WarrantyOrderLookupService {
 
     @Transactional(readOnly = true)
     public List<WarrantyOrderItemDTO> findPurchases(String phone, String sku) {
-        List<Order> orders = phone != null
-                ? warrantyOrderItemRepository.findOrdersWithItemsByCustomerPhone(phone.trim())
-                : warrantyOrderItemRepository.findOrdersWithItemsBySku(sku.trim());
-        return orders.stream()
+        String cleanPhone = phone == null ? "" : phone.trim();
+        String cleanSku = sku == null ? "" : sku.trim();
+
+        if ((cleanPhone.isEmpty() || "ALL".equalsIgnoreCase(cleanPhone)) && cleanSku.isEmpty()) {
+            return warrantyOrderItemRepository.findAllOrdersWithItems().stream()
+                    .filter(this::isPaidPurchase)
+                    .flatMap(order -> order.getItems().stream().map(item -> toDto(order, item)))
+                    .toList();
+        }
+
+        if (!cleanPhone.isEmpty()) {
+            List<Order> exactOrders = warrantyOrderItemRepository.findOrdersWithItemsByCustomerPhone(cleanPhone);
+            List<Order> matchedOrders = exactOrders.stream().filter(this::isPaidPurchase).toList();
+            if (matchedOrders.isEmpty()) {
+                List<Order> allPaid = warrantyOrderItemRepository.findAllOrdersWithItems().stream()
+                        .filter(this::isPaidPurchase)
+                        .toList();
+                matchedOrders = allPaid.stream()
+                        .filter(order -> matchesPhoneOrKeyword(order, cleanPhone))
+                        .toList();
+                if (matchedOrders.isEmpty()) {
+                    matchedOrders = allPaid.stream()
+                            .filter(order -> matchesFuzzyPhone(order.getCustomerPhone(), cleanPhone))
+                            .toList();
+                }
+            }
+            return matchedOrders.stream()
+                    .flatMap(order -> order.getItems().stream().map(item -> toDto(order, item)))
+                    .toList();
+        }
+
+        List<Order> skuOrders = warrantyOrderItemRepository.findOrdersWithItemsBySku(cleanSku).stream()
+                .filter(this::isPaidPurchase)
+                .toList();
+        if (!skuOrders.isEmpty()) {
+            return skuOrders.stream()
+                    .flatMap(order -> order.getItems().stream()
+                            .filter(item -> item.getSkuId() != null && item.getSkuId().equalsIgnoreCase(cleanSku))
+                            .map(item -> toDto(order, item)))
+                    .toList();
+        }
+
+        String qLower = cleanSku.toLowerCase();
+        return warrantyOrderItemRepository.findAllOrdersWithItems().stream()
                 .filter(this::isPaidPurchase)
                 .flatMap(order -> order.getItems().stream()
-                        .filter(item -> sku == null || item.getSkuId().equalsIgnoreCase(sku.trim()))
+                        .filter(item -> (item.getSkuId() != null && item.getSkuId().toLowerCase().contains(qLower))
+                                || (item.getProductName() != null && item.getProductName().toLowerCase().contains(qLower))
+                                || (order.getOrderCode() != null && order.getOrderCode().toLowerCase().contains(qLower)))
                         .map(item -> toDto(order, item)))
                 .toList();
+    }
+
+    private boolean matchesPhoneOrKeyword(Order order, String query) {
+        String qLower = query.toLowerCase();
+        String qDigits = digitsOnly(query);
+        String orderDigits = digitsOnly(order.getCustomerPhone());
+        if (!qDigits.isEmpty() && !orderDigits.isEmpty()) {
+            if (orderDigits.equals(qDigits) || orderDigits.contains(qDigits) || (qDigits.length() >= 6 && qDigits.contains(orderDigits))) {
+                return true;
+            }
+        }
+        if (order.getCustomerName() != null && order.getCustomerName().toLowerCase().contains(qLower)) {
+            return true;
+        }
+        if (order.getOrderCode() != null && order.getOrderCode().toLowerCase().contains(qLower)) {
+            return true;
+        }
+        return order.getItems().stream().anyMatch(i ->
+                (i.getSkuId() != null && i.getSkuId().toLowerCase().contains(qLower))
+                        || (i.getProductName() != null && i.getProductName().toLowerCase().contains(qLower)));
+    }
+
+    private boolean matchesFuzzyPhone(String orderPhone, String query) {
+        String a = digitsOnly(orderPhone);
+        String b = digitsOnly(query);
+        if (a.length() < 8 || b.length() < 8 || Math.abs(a.length() - b.length()) > 1) {
+            return false;
+        }
+        if ("0000000000".equals(a)) {
+            return false;
+        }
+        int prefixLen = Math.min(6, Math.min(a.length(), b.length()));
+        if (!a.substring(0, prefixLen).equals(b.substring(0, prefixLen))) {
+            return false;
+        }
+        int diffs = 0;
+        int minLen = Math.min(a.length(), b.length());
+        for (int i = 0; i < minLen; i++) {
+            if (a.charAt(i) != b.charAt(i)) {
+                diffs++;
+            }
+        }
+        diffs += Math.abs(a.length() - b.length());
+        return diffs <= 2;
+    }
+
+    private String digitsOnly(String input) {
+        if (input == null) return "";
+        String d = input.replaceAll("[^0-9]", "");
+        if (d.startsWith("84") && d.length() >= 11) {
+            return "0" + d.substring(2);
+        }
+        return d;
     }
 
     @Transactional(readOnly = true)

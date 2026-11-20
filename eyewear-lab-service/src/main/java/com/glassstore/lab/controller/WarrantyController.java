@@ -7,10 +7,12 @@ import com.glassstore.lab.entity.WarrantyClaimHistory;
 import com.glassstore.lab.entity.WarrantyPolicy;
 import com.glassstore.lab.repository.WarrantyClaimHistoryRepository;
 import com.glassstore.lab.repository.WarrantyRepository;
+import com.glassstore.lab.service.LabNotificationPublisher;
 import com.glassstore.lab.service.WarrantyService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -31,6 +33,12 @@ public class WarrantyController {
     private final WarrantyRepository warrantyRepository;
     private final WarrantyService warrantyService;
     private final WarrantyClaimHistoryRepository claimHistoryRepository;
+
+    @Autowired(required = false)
+    private LabNotificationPublisher labNotificationPublisher;
+
+    @Autowired
+    private com.glassstore.lab.service.WarrantyHandoverService handovers;
 
     private List<Warranty> visible(List<Warranty> rows) {
         return com.glassstore.common.security.CurrentActor.customer() ? rows.stream().filter(w -> java.util.Objects.equals(w.getCustomerId(),com.glassstore.common.security.CurrentActor.id())).toList() : rows;
@@ -93,6 +101,55 @@ public class WarrantyController {
         Warranty saved = warrantyRepository.save(warranty);
         log.info("Tạo mới phiếu bảo hành thành công: {}", saved.getWarrantyCode());
         return ResponseEntity.ok(saved);
+    }
+
+    @PostMapping("/claims")
+    public ResponseEntity<Warranty> createWarrantyClaim(@RequestBody Warranty warranty) {
+        handovers.validate(warranty);
+        if (warranty.getIssueDescription() == null || warranty.getIssueDescription().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng mô tả chi tiết tình trạng kính");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        warranty.setId(null);
+        String code = warranty.getWarrantyCode();
+        if (code == null || code.isBlank() || warrantyRepository.findByWarrantyCode(code.trim()).isPresent()) {
+            code = "CLM-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        }
+        warranty.setWarrantyCode(code.trim());
+        if (warranty.getCustomerName() == null || warranty.getCustomerName().isBlank()) {
+            warranty.setCustomerName(com.glassstore.common.security.CurrentActor.name());
+        }
+        if (warranty.getProductName() == null || warranty.getProductName().isBlank()) {
+            warranty.setProductName("Sản phẩm kính mắt");
+        }
+        if (com.glassstore.common.security.CurrentActor.customer()) {
+            warranty.setCustomerId(com.glassstore.common.security.CurrentActor.id());
+            warranty.setStatus("WAITING_PROCESS");
+            warranty.setStatusLabel("Chờ tiếp nhận");
+            warranty.setStatusColor("#f59e0b");
+        } else {
+            if (warranty.getStatus() == null || warranty.getStatus().isBlank()) warranty.setStatus("WAITING_PROCESS");
+            if (warranty.getStatusLabel() == null || warranty.getStatusLabel().isBlank()) warranty.setStatusLabel("Chờ tiếp nhận");
+            if (warranty.getStatusColor() == null || warranty.getStatusColor().isBlank()) warranty.setStatusColor("#f59e0b");
+        }
+        warranty.setCreatedAt(now);
+        warranty.setUpdatedAt(now);
+        Warranty saved = warrantyRepository.save(warranty);
+        if (claimHistoryRepository != null && saved.getId() != null) {
+            claimHistoryRepository.save(WarrantyClaimHistory.builder()
+                    .warrantyId(saved.getId())
+                    .fromStatus(null)
+                    .toStatus(saved.getStatus())
+                    .changedBy(com.glassstore.common.security.CurrentActor.name())
+                    .note("Khách hàng gửi yêu cầu bảo hành: " + warranty.getIssueDescription().trim())
+                    .changedAt(now)
+                    .build());
+        }
+        if (labNotificationPublisher != null) {
+            labNotificationPublisher.publishWarrantyClaimCreated(saved);
+        }
+        log.info("Tiếp nhận yêu cầu bảo hành mới: {} (customerId={})", saved.getWarrantyCode(), saved.getCustomerId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
     @PostMapping("/activate")
@@ -171,6 +228,9 @@ public class WarrantyController {
                         .note(body.getOrDefault("techNote", "Cập nhật trạng thái bảo hành"))
                         .changedAt(LocalDateTime.now())
                         .build());
+            }
+            if (labNotificationPublisher != null) {
+                labNotificationPublisher.publishWarrantyStatusUpdated(saved);
             }
             return ResponseEntity.ok(saved);
         }).orElse(ResponseEntity.notFound().build());

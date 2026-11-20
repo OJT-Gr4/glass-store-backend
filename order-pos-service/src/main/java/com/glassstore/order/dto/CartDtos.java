@@ -18,10 +18,10 @@ public final class CartDtos {
     @AllArgsConstructor
     @Builder
     public static class AddItemRequest {
-        @NotBlank
+        @NotBlank(message = "Mã SKU không được để trống")
         private String sku;
-        @NotNull
-        @Min(1)
+        @NotNull(message = "Số lượng không được để trống")
+        @Min(value = 1, message = "Số lượng phải từ 1 trở lên")
         private Integer quantity;
     }
 
@@ -30,8 +30,8 @@ public final class CartDtos {
     @AllArgsConstructor
     @Builder
     public static class UpdateQtyRequest {
-        @NotNull
-        @Min(1)
+        @NotNull(message = "Số lượng không được để trống")
+        @Min(value = 1, message = "Số lượng phải từ 1 trở lên")
         private Integer quantity;
     }
 

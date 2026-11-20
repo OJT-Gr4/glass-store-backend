@@ -17,7 +17,8 @@ public class LabSecurityConfig {
             .authorizeHttpRequests(a -> a
                 .requestMatchers(HttpMethod.OPTIONS,"/**").permitAll().requestMatchers("/error").permitAll()
                 .requestMatchers("/api/lab-jobs/from-order","/api/lab-jobs/by-order/**").hasRole("SERVICE")
-                .requestMatchers(HttpMethod.GET,"/api/lab-jobs/**","/api/lab-jobs").hasAnyRole("ADMIN","LAB_TECH","SALES_STAFF")
+                .requestMatchers("/internal/loyalty/completed-services").hasRole("SERVICE")
+                .requestMatchers(HttpMethod.GET,"/api/lab-jobs/**","/api/lab-jobs").hasAnyRole("ADMIN","LAB_TECH","SALES_STAFF","OPTOMETRIST")
                 .requestMatchers(HttpMethod.POST,"/api/lab-jobs").hasAnyRole("ADMIN","LAB_TECH","SERVICE")
                 .requestMatchers("/api/lab-jobs/**").hasAnyRole("ADMIN","LAB_TECH")
                 .requestMatchers(HttpMethod.GET,"/api/prescriptions","/api/v1/prescriptions").hasAnyRole("ADMIN","OPTOMETRIST","SALES_STAFF","LAB_TECH")
@@ -28,6 +29,7 @@ public class LabSecurityConfig {
                 .requestMatchers(HttpMethod.POST,"/api/appointments","/api/v1/appointments").hasAnyRole("ADMIN","OPTOMETRIST","SALES_STAFF","CUSTOMER")
                 .requestMatchers("/api/appointments/**","/api/v1/appointments/**").hasAnyRole("ADMIN","OPTOMETRIST","SALES_STAFF")
                 .requestMatchers("/api/warranties/activate").hasAnyRole("ADMIN","SALES_STAFF","SERVICE")
+                .requestMatchers(HttpMethod.POST,"/api/warranties/claims").hasAnyRole("ADMIN","SALES_STAFF","CUSTOMER")
                 .requestMatchers(HttpMethod.GET,"/api/warranties/**","/api/warranties").hasAnyRole("ADMIN","SALES_STAFF","CUSTOMER")
                 .requestMatchers("/api/warranties/**","/api/warranties").hasAnyRole("ADMIN","SALES_STAFF")
                 .requestMatchers("/api/repair-services/**","/api/repair-services").hasAnyRole("ADMIN","SALES_STAFF","LAB_TECH")

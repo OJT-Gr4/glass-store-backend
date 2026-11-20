@@ -40,4 +40,20 @@ public class CatalogLocationClient {
                     "Không thể xác minh địa điểm đặt lịch.", error);
         }
     }
+
+    public record ReceivingBranch(String code, String name, String address) {}
+
+    public ReceivingBranch requireReceivingBranch(String code) {
+        try {
+            JsonNode response=client.get().uri("/api/locations").retrieve().body(JsonNode.class);
+            JsonNode rows=response==null?null:response.get("data");
+            if(rows==null || !rows.isArray()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Không tải được showroom tiếp nhận.");
+            for(JsonNode row:rows) {
+                if(code.equalsIgnoreCase(row.path("code").asText()) && row.path("active").asBoolean(true)
+                        && java.util.Set.of("BRANCH","STORE","SHOWROOM").contains(row.path("locationType").asText()))
+                    return new ReceivingBranch(row.path("code").asText(),row.path("name").asText(),row.hasNonNull("address")?row.path("address").asText():null);
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Showroom tiếp nhận không tồn tại hoặc đã ngừng hoạt động.");
+        } catch(RestClientException error) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Không xác minh được showroom. Vui lòng thử lại."); }
+    }
 }

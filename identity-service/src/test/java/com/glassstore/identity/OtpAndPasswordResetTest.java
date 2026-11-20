@@ -65,6 +65,14 @@ class OtpAndPasswordResetTest {
                 DISPATCHED_OTPS.put(phoneNumber + ":" + purpose, otpCode);
             };
         }
+
+        @Bean
+        @Primary
+        com.glassstore.identity.service.EmailOtpSender testEmailOtpSender() {
+            return (recipientEmail, recipientName, otpCode, purpose, expiresAt) -> {
+                DISPATCHED_OTPS.put(recipientEmail + ":" + purpose, otpCode);
+            };
+        }
     }
 
     @Autowired

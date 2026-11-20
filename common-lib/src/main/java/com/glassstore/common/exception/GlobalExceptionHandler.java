@@ -59,14 +59,36 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Object>> handleBeanValidation(MethodArgumentNotValidException ex) {
         Map<String, Object> fieldErrors = new LinkedHashMap<>();
         for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
-            fieldErrors.merge(fe.getField(), fe.getDefaultMessage(),
+            String friendlyMsg = humanizeValidationMessage(fe.getField(), fe.getDefaultMessage());
+            fieldErrors.merge(fe.getField(), friendlyMsg,
                     (a, b) -> a + "; " + b);
         }
         String summary = fieldErrors.entrySet().stream()
-                .map(e -> e.getKey() + ": " + e.getValue())
+                .map(e -> e.getValue().toString())
+                .distinct()
                 .collect(Collectors.joining(", "));
 
         return buildError(ErrorCode.VALIDATION_ERROR, summary, fieldErrors);
+    }
+
+    private String humanizeValidationMessage(String field, String msg) {
+        if (msg == null || msg.isBlank()) {
+            return "Trường '" + field + "' không hợp lệ";
+        }
+        String lower = msg.toLowerCase();
+        if (lower.contains("must not be blank") || lower.contains("must not be null") || lower.contains("must not be empty")) {
+            return "Trường '" + field + "' là bắt buộc và không được để trống";
+        }
+        if (lower.contains("must be greater than or equal to 1")) {
+            return "Trường '" + field + "' phải có giá trị tối thiểu từ 1 trở lên";
+        }
+        if (lower.contains("must be greater than or equal to 0")) {
+            return "Trường '" + field + "' phải có giá trị từ 0 trở lên";
+        }
+        if (lower.contains("size must be between")) {
+            return "Độ dài của trường '" + field + "' không hợp lệ";
+        }
+        return msg;
     }
 
     @ExceptionHandler(MissingRequestHeaderException.class)

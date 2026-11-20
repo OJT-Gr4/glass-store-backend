@@ -184,4 +184,41 @@ class LabAndAppointmentNotificationTest {
         org.assertj.core.api.Assertions.assertThat(published.get(0).getCustomerId()).isEqualTo(5L);
         org.assertj.core.api.Assertions.assertThat(published.get(1).getStatus()).isEqualTo("IN_EXAM");
     }
+
+    @Test
+    void publishWarrantyClaimAndStatusUpdate_emitsNotificationToStaffAndCustomer() {
+        com.glassstore.lab.client.IdentityNotificationClient client = mock(com.glassstore.lab.client.IdentityNotificationClient.class);
+        LabNotificationPublisher publisher = new LabNotificationPublisher(client);
+
+        com.glassstore.lab.entity.Warranty warranty = com.glassstore.lab.entity.Warranty.builder()
+                .id(88L)
+                .warrantyCode("WAR-0863")
+                .customerId(10L)
+                .customerName("Phong Trần")
+                .customerPhone("0938773607")
+                .productName("Gọng Bolon Titanium")
+                .issueDescription("Test")
+                .status("WAITING_PROCESS")
+                .statusLabel("Chờ tiếp nhận")
+                .build();
+
+        publisher.publishWarrantyClaimCreated(warranty);
+        warranty.setStatus("IN_PROGRESS");
+        warranty.setStatusLabel("Đang xử lý");
+        publisher.publishWarrantyStatusUpdated(warranty);
+
+        org.mockito.ArgumentCaptor<com.glassstore.lab.dto.NotificationEventPayload> captor =
+                org.mockito.ArgumentCaptor.forClass(com.glassstore.lab.dto.NotificationEventPayload.class);
+        verify(client, org.mockito.Mockito.times(2)).publishEvent(captor.capture());
+
+        List<com.glassstore.lab.dto.NotificationEventPayload> events = captor.getAllValues();
+        org.assertj.core.api.Assertions.assertThat(events.get(0).getCategory()).isEqualTo("WARRANTY");
+        org.assertj.core.api.Assertions.assertThat(events.get(0).getActionRoute()).isEqualTo("/warranty");
+        org.assertj.core.api.Assertions.assertThat(events.get(0).getActionTab()).isEqualTo("warranty");
+        org.assertj.core.api.Assertions.assertThat(events.get(0).getCustomerId()).isEqualTo(10L);
+        org.assertj.core.api.Assertions.assertThat(events.get(0).getTargetRoles()).containsExactlyInAnyOrder("ROLE_SALES_STAFF", "ROLE_ADMIN");
+
+        org.assertj.core.api.Assertions.assertThat(events.get(1).getEventType()).isEqualTo("WARRANTY_STATUS_UPDATED");
+        org.assertj.core.api.Assertions.assertThat(events.get(1).getCustomerId()).isEqualTo(10L);
+    }
 }

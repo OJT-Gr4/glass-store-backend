@@ -7,6 +7,8 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Copies server-verified measurements once, so dispatch/retry never follows a newer revision. */
 final class ClinicalPrescriptionSnapshot {
@@ -30,6 +32,27 @@ final class ClinicalPrescriptionSnapshot {
 
     private static BigDecimal decimal(Map<String, Object> data, String field) {
         return new BigDecimal(Objects.requireNonNull(data.get(field), field).toString());
+    }
+
+    /** Compare values, not decimal scale; never silently replace a customer's order measurements. */
+    static List<String> differences(OrderPrescription entered, OrderPrescription clinical) {
+        if (entered == null) return List.of();
+        List<String> fields = new ArrayList<>();
+        compare(fields, "OD SPH", entered.getOdSph(), clinical.getOdSph());
+        compare(fields, "OD CYL", entered.getOdCyl(), clinical.getOdCyl());
+        compare(fields, "OD AXIS", entered.getOdAxis(), clinical.getOdAxis());
+        compare(fields, "OD ADD", entered.getOdAdd(), clinical.getOdAdd());
+        compare(fields, "OS SPH", entered.getOsSph(), clinical.getOsSph());
+        compare(fields, "OS CYL", entered.getOsCyl(), clinical.getOsCyl());
+        compare(fields, "OS AXIS", entered.getOsAxis(), clinical.getOsAxis());
+        compare(fields, "OS ADD", entered.getOsAdd(), clinical.getOsAdd());
+        compare(fields, "PD", entered.getPd(), clinical.getPd());
+        return fields;
+    }
+
+    private static void compare(List<String> fields, String label, Number entered, Number clinical) {
+        if (entered == null || clinical == null || new BigDecimal(entered.toString()).compareTo(new BigDecimal(clinical.toString())) != 0)
+            fields.add(label);
     }
 
     static Map<String, Object> toMap(OrderPrescription rx, Long id, Long customerId) {

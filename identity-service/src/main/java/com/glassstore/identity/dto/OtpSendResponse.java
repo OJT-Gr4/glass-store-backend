@@ -15,6 +15,8 @@ public class OtpSendResponse {
     private String challengeId;
     private String purpose;
     private String maskedPhone;
+    private String maskedEmail;
+    private String deliveryChannel;
     private int expiresInSeconds;
     private LocalDateTime expiresAt;
     private int maxAttempts;

@@ -9,6 +9,9 @@ import java.util.List;
 
 public interface WarrantyOrderItemRepository extends JpaRepository<Order, Long> {
 
+    @Query("select distinct o from Order o join fetch o.items order by o.createdAt desc")
+    List<Order> findAllOrdersWithItems();
+
     @Query("select distinct o from Order o join fetch o.items where o.customerPhone = :phone order by o.createdAt desc")
     List<Order> findOrdersWithItemsByCustomerPhone(@Param("phone") String phone);
 

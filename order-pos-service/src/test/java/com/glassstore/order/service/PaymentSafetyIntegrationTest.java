@@ -26,8 +26,10 @@ import static org.mockito.Mockito.*;
     "spring.jpa.hibernate.ddl-auto=create-drop","spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect",
     "inventory.outbox.poll-interval-ms=3600000","inventory.reservation.initial-delay-ms=3600000","inventory.reservation.poll-interval-ms=3600000",
     "lab.outbox.initial-delay-ms=3600000","warranty.outbox.poll-interval-ms=3600000"})
+@org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 class PaymentSafetyIntegrationTest {
     @Autowired OrderService pos;
+    @Autowired org.springframework.test.web.servlet.MockMvc mvc;
     @Autowired OrderCheckoutService online;
     @Autowired PaymentService paymentService;
     @Autowired OrderRepository orders;
@@ -160,6 +162,8 @@ class PaymentSafetyIntegrationTest {
         var request=request("ONLINE","VNPAY");request.setOrderType("LENS_ONLY");request.setPrescriptionId(7L);
         request.getItems().get(0).setSku("LNS-QA");request.getItems().get(0).setPrescriptionId(7L);
         var order=online.checkout(request,key()).order();
+        // This scenario explicitly covers a previously POS-approved order; unapproved orders must never dispatch.
+        order.setLabConfirmedAt(java.time.LocalDateTime.now());order.setLabConfirmedBy("QA POS approval");orders.saveAndFlush(order);
         when(lab.createFromOrder(any())).thenThrow(new IllegalStateException("Lab unavailable"));
         when(gateway.verifyCallback("lab-payment","signed")).thenReturn(new PaymentGateway.VerificationResult(true,"QA_GATEWAY",key(),order.getOrderCode(),order.getFinalAmount(),true,"verified"));
         paymentService.handleCallback("lab-payment","signed");
@@ -205,6 +209,18 @@ class PaymentSafetyIntegrationTest {
         assertEquals("RECONCILIATION_REQUIRED",tasks.findById(paid.getId()).orElseThrow().getStatus());
     }
 
+    @Test
+    @org.springframework.security.test.context.support.WithMockUser(username="1",roles="ADMIN")
+    void cancellingUnpaidPosOrderReleasesItsReservation() throws Exception {
+        var unpaid = online.checkout(request("POS", "VIETQR"), key()).order();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/orders/" + unpaid.getId() + "/cancel")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content("{\"reason\":\"Khách chưa thanh toán\",\"refundConfirmed\":false}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
+        assertEquals(OrderStatus.CANCELLED, orders.findById(unpaid.getId()).orElseThrow().getStatus());
+        assertEquals("RELEASE", tasks.findById(unpaid.getId()).orElseThrow().getOperation());
+        assertFalse(payments.findByOrderId(unpaid.getId()).stream().anyMatch(p -> p.getStatus() == PaymentStatus.SUCCESS));
+    }
+
     @Test void posSepayGatewayFlowCreatesPendingAndSucceedsOnSettlement() {
         var req = request("POS", "VIETQR");
         req.setGatewayRequested(true);
@@ -213,7 +229,7 @@ class PaymentSafetyIntegrationTest {
         assertEquals(OrderStatus.PENDING_PAYMENT, res.getStatus());
         var pendingPayment = payments.findByOrderId(res.getId()).get(0);
         assertEquals(PaymentStatus.PENDING, pendingPayment.getStatus());
-        assertEquals("SEPAY", pendingPayment.getProvider());
+        assertEquals("VIETQR", pendingPayment.getProvider());
 
         // Cashier manually confirms or gateway settles POS order
         online.settleCash(res.getId(), "cashier");
@@ -222,5 +238,10 @@ class PaymentSafetyIntegrationTest {
         var paidPayment = payments.findByOrderId(res.getId()).get(0);
         assertEquals(PaymentStatus.SUCCESS, paidPayment.getStatus());
         assertEquals(1, stock.count());
+    }
+    @Test void onlineRevenueOriginCannotBeForgedAsAPosBranch() {
+        var request=request("ONLINE","VIETQR");request.setBranchCode("BRANCH_02");request.setBranchName("Fake POS branch");
+        var order=online.checkout(request,key()).order();
+        assertEquals("ONLINE",order.getBranchCode());assertEquals("Website trực tuyến",order.getBranchName());
     }
 }

@@ -7,5 +7,7 @@ import java.util.*;
 public interface LoyaltyEntryRepository extends JpaRepository<LoyaltyEntry,Long> {
  List<LoyaltyEntry> findByCustomerIdOrderByCreatedAtDesc(Long customerId);
  Optional<LoyaltyEntry> findByOrderIdAndEntryType(Long orderId, String entryType);
+ Optional<LoyaltyEntry> findByEventKey(String eventKey);
+ List<LoyaltyEntry> findTop100ByNoticeStatusOrderByCreatedAtAsc(String noticeStatus);
 }
 

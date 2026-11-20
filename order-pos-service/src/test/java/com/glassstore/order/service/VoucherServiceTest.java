@@ -19,6 +19,20 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class VoucherServiceTest {
+    @Test void hardCapAppliesToBothPercentAndLegacyFixedVouchers() {
+        for (String type : java.util.List.of("PERCENT","FIXED")) {
+            var voucher=Voucher.builder().active(true).discountType(type).discountValue(new BigDecimal(type.equals("PERCENT")?"100":"9000000")).build();
+            assertThat(service.apply(voucher,new BigDecimal("10000000"),SalesChannel.ONLINE)).isEqualByComparingTo("5000000");
+            assertThat(service.apply(voucher,new BigDecimal("1000000"),SalesChannel.POS)).isEqualByComparingTo("1000000");
+        }
+    }
+    @Test void creationRejectsValuesAboveOneHundredPercentOrFiveMillion() {
+        for (var voucher : java.util.List.of(
+                Voucher.builder().name("QA").code("QA100").discountType("PERCENT").discountValue(new BigDecimal("100.01")).build(),
+                Voucher.builder().name("QA").code("QA101").discountType("FIXED").discountValue(new BigDecimal("5000001")).build(),
+                Voucher.builder().name("QA").code("QA102").discountType("PERCENT").discountValue(BigDecimal.TEN).maxDiscountAmount(new BigDecimal("5000001")).build()))
+            assertThatThrownBy(()->service.createVoucher(voucher)).isInstanceOf(ApiException.class);
+    }
 
     private VoucherRepository repository;
     private VoucherService service;

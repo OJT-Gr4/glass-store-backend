@@ -26,9 +26,11 @@ class OrderStateMachineTest {
     }
 
     @Test
-    @DisplayName("A completed order is terminal and cannot be edited (BR-17)")
-    void completedIsTerminal() {
-        assertThat(OrderStatus.COMPLETED.isTerminal()).isTrue();
+    @DisplayName("A completed order only moves forward into cancellation/refund, never payment or shipping")
+    void completedOnlyAllowsAfterSalesTransitions() {
+        assertThat(OrderStatus.COMPLETED.isTerminal()).isFalse();
+        assertThat(OrderStatus.COMPLETED.canTransitionTo(OrderStatus.CANCEL_PENDING)).isTrue();
+        assertThat(OrderStatus.COMPLETED.canTransitionTo(OrderStatus.REFUND_PENDING)).isTrue();
         assertThat(OrderStatus.COMPLETED.canTransitionTo(OrderStatus.SHIPPING)).isFalse();
         assertThat(OrderStatus.COMPLETED.canTransitionTo(OrderStatus.PAID)).isFalse();
     }

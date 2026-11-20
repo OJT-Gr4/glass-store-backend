@@ -19,6 +19,8 @@ public class PromotionService {
     private final VoucherRedemptionRepository redemptions;
     private final PosDataService data;
     private final LoyaltyPolicy policy;
+    private final VoucherEntitlementService voucherEntitlements;
+    private final LoyaltyLifecycleService lifecycle;
     public record Quote(BigDecimal subtotal, String voucherCode, BigDecimal voucherDiscount, long redeemedPoints,
                         BigDecimal pointsDiscount, BigDecimal taxableAmount, BigDecimal vatAmount, BigDecimal finalAmount,
                         long pointsBalance, long maximumPoints, BigDecimal pointValue) {}
@@ -72,6 +74,7 @@ public class PromotionService {
         BigDecimal voucherDiscount = BigDecimal.ZERO;
         if (!code.isEmpty()) {
             voucher = (consumeLocks ? vouchers.lockByCode(code) : vouchers.findByCode(code)).orElseThrow(() -> invalid("Mã voucher không tồn tại."));
+            voucherEntitlements.requireAvailable(code, order.getCustomerId(), com.glassstore.order.domain.SalesChannel.POS);
             if (voucher.getAmount() == null || voucher.getAmount().signum() <= 0
                     || "PERCENT".equals(voucher.getType()) && voucher.getAmount().compareTo(new BigDecimal("100")) > 0
                     || voucher.getMinimumAmount().signum() < 0
@@ -88,7 +91,7 @@ public class PromotionService {
             else if ("FIXED".equals(voucher.getType())) voucherDiscount = voucher.getAmount();
             else throw invalid("Loại voucher không hợp lệ.");
             if (voucher.getMaximumDiscount() != null) voucherDiscount = voucherDiscount.min(voucher.getMaximumDiscount());
-            voucherDiscount = voucherDiscount.min(subtotal).setScale(0, RoundingMode.DOWN);
+            voucherDiscount = voucherDiscount.min(subtotal).min(VoucherService.MAX_DISCOUNT).setScale(0, RoundingMode.DOWN);
         }
         long points = order.getPointsToUse() == null ? 0 : order.getPointsToUse();
         if (points < 0) throw invalid("Số điểm không hợp lệ.");
@@ -109,11 +112,14 @@ public class PromotionService {
     }
 
     public void consume(Order order) {
+        voucherEntitlements.consume(order);
         if (order.getVoucherCode() != null && redemptions.findByOrderId(order.getId()).isEmpty()) {
             Voucher voucher = vouchers.lockByCode(order.getVoucherCode()).orElseThrow();
             voucher.setUsedCount(voucher.getUsedCount()+1); vouchers.save(voucher);
             VoucherRedemption redemption = new VoucherRedemption(); redemption.setVoucherId(voucher.getId()); redemption.setCustomerId(order.getCustomerId()); redemption.setOrderId(order.getId()); redemptions.save(redemption);
         }
+        // Keep the checkout lock order: voucher/grant first, then loyalty account.
+        if(order.getCustomerId()!=null)lifecycle.current(order.getCustomerId());
         if (order.getRedeemedPoints() != null && order.getRedeemedPoints() > 0
                 && entries.findByOrderIdAndEntryType(order.getId(), "REDEEM").isEmpty()) {
             LoyaltyAccount account = accounts.lockByCustomerId(order.getCustomerId()).orElseThrow();
@@ -123,10 +129,12 @@ public class PromotionService {
         earnPoints(order);
     }
 
+    @Transactional
     public void earnPoints(Order order) {
         if (order == null || order.getId() == null || order.getCustomerId() == null) return;
         if (!policy.isEnabled() || !policy.isEarnEnabled()) return;
         if (order.getFinalAmount() == null || policy.getEarnUnitAmount() == null || policy.getEarnUnitAmount().signum() <= 0) return;
+        lifecycle.purchase(order);
 
         long earned = order.getFinalAmount().divide(policy.getEarnUnitAmount(), 0, RoundingMode.DOWN).longValue();
         if (earned <= 0) return;
@@ -138,6 +146,7 @@ public class PromotionService {
             created.setBalance(0L);
             return accounts.saveAndFlush(created);
         });
+        if (entries.findByOrderIdAndEntryType(order.getId(), "EARN").isPresent()) return;
         account.setBalance(Math.addExact(account.getBalance(), earned));
         accounts.save(account);
 
@@ -148,6 +157,7 @@ public class PromotionService {
         entry.setPoints(earned);
         entry.setReason("Tích điểm đơn hàng " + (order.getOrderCode() != null ? order.getOrderCode() : order.getId()));
         entries.save(entry);
+        lifecycle.refresh(order.getCustomerId());
     }
 
     public void reverse(Order order) {
@@ -175,5 +185,6 @@ public class PromotionService {
                 });
             }
         });
+        lifecycle.refund(order);
     }
 }

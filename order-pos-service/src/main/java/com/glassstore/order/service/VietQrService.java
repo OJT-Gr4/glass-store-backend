@@ -263,7 +263,7 @@ public class VietQrService {
 
         // Fallback: Tự sinh mã EMVCo Napas 247 chuẩn quốc tế để MBBank/Vietcombank/BIDV quét luôn chuẩn 100%
         String emvcoString = VietQrEmvcoUtil.generatePayload(
-                "970422", // MBBank
+                resolveBankBin(properties.getPartner().getBankCode()),
                 properties.getPartner().getBankAccount(),
                 amount,
                 orderCode
@@ -332,6 +332,27 @@ public class VietQrService {
         TransactionSyncResponse syncResult = processTransactionSync(syncReq);
         log.info("Đã đồng bộ giao dịch thanh toán thành công cho đơn {}", orderCode);
         return syncResult;
+    }
+
+    private String resolveBankBin(String bankCode) {
+        if (bankCode == null || bankCode.isBlank()) return "970422";
+        String code = bankCode.trim().toUpperCase();
+        if (code.matches("\\d{6}")) return code;
+        return switch (code) {
+            case "MB", "MBBANK" -> "970422";
+            case "VCB", "VIETCOMBANK" -> "970436";
+            case "TCB", "TECHCOMBANK" -> "970407";
+            case "BIDV" -> "970418";
+            case "ICB", "CTG", "VIETINBANK" -> "970415";
+            case "ACB" -> "970416";
+            case "VPB", "VPBANK" -> "970432";
+            case "TPB", "TPBANK" -> "970423";
+            case "STB", "SACOMBANK" -> "970403";
+            case "VIB" -> "970441";
+            case "MSB" -> "970426";
+            case "SHB" -> "970443";
+            default -> "970422";
+        };
     }
 
     private String resolveOrderCode(String orderId, String content) {

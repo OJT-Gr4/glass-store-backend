@@ -29,6 +29,7 @@ import java.util.ArrayList;
 @RequiredArgsConstructor
 @Slf4j
 public class OrderService {
+    private final VoucherEntitlementService voucherEntitlements;
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
     private final StockDeductionService stockDeductionService;
@@ -105,7 +106,7 @@ public class OrderService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Giảm giá không hợp lệ.");
         }
         if (order.getChannel() == SalesChannel.POS) {
-            SalesBranch branch = SalesBranch.resolve(order.getBranchCode(), order.getBranchName());
+            SalesBranch branch = SessionSalesBranch.resolve(order.getBranchCode(), order.getBranchName());
             order.setBranchCode(branch.code());
             order.setBranchName(branch.name());
             try {
@@ -154,6 +155,7 @@ public class OrderService {
         order.setIdempotencyKey(requestIdempotencyKey);
         if (order.getChannel() == SalesChannel.POS) order.setStatus(OrderStatus.PENDING_PAYMENT);
         Order saved = orderRepository.save(order);
+        voucherEntitlements.reserve(saved);
 
         boolean isImmediateSettlement = (saved.getPaymentMethod() == PaymentMethod.CASH
                 || saved.isManualPaymentConfirmed());
